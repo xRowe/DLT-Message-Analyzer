@@ -1330,6 +1330,21 @@ QString getName(ePatternsColumn val)
             result = "Is filtered";
         }
             break;
+        case ePatternsColumn::RegexPatternType:
+        {
+            result = "Regex pattern type";
+        }
+            break;
+        case ePatternsColumn::UUID:
+        {
+            result = "UUID";
+        }
+            break;
+        case ePatternsColumn::RegexReferences:
+        {
+            result = "Regex references";
+        }
+            break;
         case ePatternsColumn::Last:
         {
             result = "Last";
@@ -2121,6 +2136,14 @@ QVariant toQVariant(const tDataItem& item)
     else if(item.index() == tDataItem::index_of<tQStringPtrWrapper>())
     {
         result.setValue(*item.get<tQStringPtrWrapper>().pString);
+    }
+    else if(item.index() == tDataItem::index_of<eRegexPatternType>())
+    {
+        result.setValue(item.get<eRegexPatternType>());
+    }
+    else if(item.index() == tDataItem::index_of<tPatternReferences>())
+    {
+        result.setValue(item.get<tPatternReferences>());
     }
 
     return result;

@@ -1,4 +1,5 @@
 QT5_WRAP_UI( UI_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/form.ui )
+QT5_WRAP_UI( UI_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/patternEditorDialog.ui )
 
 qt5_wrap_cpp(PROCESSED_MOCS
              ../api/form.h

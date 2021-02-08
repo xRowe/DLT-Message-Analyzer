@@ -48,11 +48,19 @@ public:
     struct tAliasItem
     {
         tAliasItem();
-        tAliasItem(bool isDefault_, const QString& alias_, const QString& regex_);
+        tAliasItem(bool isDefault_,
+                   const QString& alias_,
+                   const QString& regex_,
+                   const eRegexPatternType& type_,
+                   const tUUID& UUID_,
+                   const tPatternReferences& references_);
         bool operator==(const tAliasItem&) const;
         bool isDefault;
         QString alias;
         QString regex;
+        eRegexPatternType type;
+        tUUID UUID;
+        tPatternReferences references;
     };
     typedef QVector<tAliasItem> tAliasItemVec;
 

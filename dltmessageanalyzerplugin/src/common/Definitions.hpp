@@ -211,6 +211,19 @@ enum class ePatternsRowType
 
 Q_DECLARE_METATYPE(ePatternsRowType)
 
+/*regex patterns references*/
+enum class eRegexPatternType
+{
+    eTextual = 0,
+    eReferenceBased = 1
+};
+
+Q_DECLARE_METATYPE(eRegexPatternType)
+
+typedef QString tUUID;
+typedef std::vector<tUUID> tPatternReferences;
+/*( END ) regex patterns references*/
+
 /**
  * @brief The ePatternsColumn enum
  * Enum, which is used to operate on the columns of the patterns view in a readable way
@@ -225,6 +238,9 @@ enum class ePatternsColumn : int
     Alias, /*QString*/
     RowType, /*ePatternsRowType*/
     IsFiltered, /*bool*/
+    RegexPatternType, /*eRegexPatternType*/
+    UUID, /*tUUID*/
+    RegexReferences, /*tPatternReferences*/
     Last /*nothing*/
 };
 
@@ -400,7 +416,9 @@ typedef nonstd::variant<QString,
                         const tFoundMatch*,
                         tColorWrapper,
                         tIntRange,
-                        eRegexFiltersRowType> tTreeDataItem;
+                        eRegexFiltersRowType,
+                        eRegexPatternType,
+                        tPatternReferences> tTreeDataItem;
 typedef tTreeDataItem tDataItem; // just to refactor less code
 QVariant toQVariant(const tDataItem& item);
 tDataItem toRegexDataItem(const QVariant& variant, const eRegexFiltersColumn& column);

@@ -30,6 +30,9 @@ static const QString sAliasesKey = "aliases";
 static const QString sAliasKey = "alias";
 static const QString sRegexKey = "regex";
 static const QString sIsDefaultKey = "isDefault";
+static const QString sPatternTypeKey = "patternType";
+static const QString sPatternUUIDKey = "patternUUID";
+static const QString sPatternReferencesKey = "patternReferences";
 static const QString sNumberOfThreadsKey = "numberOfThreads";
 static const QString sIsContinuousSearchKey = "isContinuousSearch";
 static const QString sCopySearchResultAsHTMLKey = "copySearchResultAsHTML";
@@ -688,6 +691,21 @@ TSettingItem<CSettingsManager::tAliasItemVec> CSettingsManager::createAliasItemV
             obj.insert( sIsDefaultKey, QJsonValue( item.isDefault ) );
             obj.insert( sAliasKey, QJsonValue( item.alias ) );
             obj.insert( sRegexKey, QJsonValue( item.regex ) );
+            obj.insert( sPatternTypeKey, QJsonValue( static_cast<int>(item.type) ) );
+            obj.insert( sPatternUUIDKey, QJsonValue( item.UUID ) );
+
+            QJsonArray arrayReferences;
+
+            if(item.type == eRegexPatternType::eReferenceBased)
+            {
+                for(const auto& reference : item.references)
+                {
+                    arrayReferences.append(QJsonValue(reference));
+                }
+            }
+
+            obj.insert( sPatternReferencesKey, arrayReferences );
+
             arrayAliases.append( obj );
         }
 
@@ -725,14 +743,76 @@ TSettingItem<CSettingsManager::tAliasItemVec> CSettingsManager::createAliasItemV
                         {
                             bool bIsDefault = false;
 
-                            auto isDefault = obj.find(sIsDefaultKey);
-
-                            if(isDefault != obj.end() && isDefault->isBool())
                             {
-                                bIsDefault = isDefault->toBool();
+                                auto JSON_isDefault = obj.find(sIsDefaultKey);
+
+                                if(JSON_isDefault != obj.end() && JSON_isDefault->isBool())
+                                {
+                                    bIsDefault = JSON_isDefault->toBool();
+                                }
                             }
 
-                            data.push_back(tAliasItem(bIsDefault, alias->toString(), regex->toString()));
+                            int patternType = 0;
+
+                            {
+                                auto JSON_patternType = obj.find(sPatternTypeKey);
+
+                                if(JSON_patternType != obj.end() && JSON_patternType->isDouble())
+                                {
+                                    patternType = static_cast<int>(JSON_patternType->toDouble());
+                                }
+                            }
+
+                            tUUID UUID;
+
+                            {
+                                auto JSON_UUID = obj.find(sPatternUUIDKey);
+
+                                if(JSON_UUID != obj.end() && JSON_UUID->isString())
+                                {
+                                    UUID = JSON_UUID->toString();
+
+                                    if(true == UUID.isEmpty())
+                                    {
+                                        UUID = QUuid::createUuid().toString();
+                                    }
+                                }
+                            }
+
+                            tPatternReferences references;
+
+                            {
+                                auto JSON_References = obj.find(sPatternReferencesKey);
+
+                                if(JSON_References != obj.end() && JSON_References->isArray())
+                                {
+                                    QJsonArray referencesArray = JSON_References->toArray();
+
+                                    references.reserve(static_cast<std::size_t>(referencesArray.size()));
+
+                                    for( const auto referenceObj : referencesArray)
+                                    {
+                                        if(referenceObj.isString())
+                                        {
+                                            tUUID referenceUUID = referenceObj.toString();
+
+                                            if(true == referenceUUID.isEmpty())
+                                            {
+                                                referenceUUID = QUuid::createUuid().toString();
+                                            }
+
+                                            references.push_back(referenceUUID);
+                                        }
+                                    }
+                                }
+                            }
+
+                            data.push_back(tAliasItem(bIsDefault,
+                                                      alias->toString(),
+                                                      regex->toString(),
+                                                      static_cast<eRegexPatternType>(patternType),
+                                                      UUID,
+                                                      references));
                         }
                     }
                 }
@@ -2048,27 +2128,6 @@ CSettingsManager::tOperationResult CSettingsManager::loadSettingsConfigCustomPat
     }
 
     return result;
-}
-
-// tAliasItem
-CSettingsManager::tAliasItem::tAliasItem():
-    isDefault(false),
-    alias(),
-    regex()
-{}
-
-CSettingsManager::tAliasItem::tAliasItem(bool isDefault_, const QString& alias_, const QString& regex_):
-    isDefault(isDefault_),
-    alias(alias_),
-    regex(regex_)
-{}
-
-// tAliasItem
-bool CSettingsManager::tAliasItem::operator==(const tAliasItem& val) const
-{
-    return isDefault == val.isDefault &&
-            alias == val.alias &&
-            regex == val.regex;
 }
 
 bool CSettingsManager::areAnyDefaultAliasesAvailable() const

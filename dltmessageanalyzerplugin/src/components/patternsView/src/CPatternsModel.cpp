@@ -10,6 +10,7 @@
 #include <QDebug>
 #include <QStack>
 #include <QRegularExpression>
+#include <QUuid>
 
 #include "common/Definitions.hpp"
 #include "common/CTreeItem.hpp"
@@ -224,6 +225,9 @@ CPatternsModel::CPatternsModel(const tSettingsManagerPtr& pSettingsManager,
     mpRootItem->appendColumn( getName(ePatternsColumn::AfterLastVisible) );
     mpRootItem->appendColumn( getName(ePatternsColumn::Alias) );
     mpRootItem->appendColumn( getName(ePatternsColumn::IsFiltered) );
+    mpRootItem->appendColumn( getName(ePatternsColumn::RegexPatternType) );
+    mpRootItem->appendColumn( getName(ePatternsColumn::UUID) );
+    mpRootItem->appendColumn( getName(ePatternsColumn::RegexReferences) );
     mpRootItem->appendColumn( getName(ePatternsColumn::Last) );
 }
 
@@ -482,6 +486,9 @@ QModelIndex CPatternsModel::addData(const QString& alias, const QString& regex, 
                 data.push_back(tDataItem(finalAlias));
                 data.push_back(tDataItem(ePatternsRowType::ePatternsRowType_Alias));
                 data.push_back(tDataItem(false));
+                data.push_back(tDataItem(eRegexPatternType::eTextual));
+                data.push_back(tDataItem(QUuid::createUuid().toString()));
+                data.push_back(tDataItem(tPatternReferences()));
             }
             else
             {
@@ -492,6 +499,9 @@ QModelIndex CPatternsModel::addData(const QString& alias, const QString& regex, 
                 data.push_back(tDataItem(finalAlias));
                 data.push_back(tDataItem(ePatternsRowType::ePatternsRowType_FakeTreeLevel));
                 data.push_back(tDataItem(false));
+                data.push_back(tDataItem(eRegexPatternType::eTextual));
+                data.push_back(tDataItem(QUuid::createUuid().toString()));
+                data.push_back(tDataItem(tPatternReferences()));
             }
 
             dataVec.push_back(data);
@@ -597,7 +607,11 @@ CPatternsModel::tSearchResult CPatternsModel::search( const QString& alias )
     return result;
 }
 
-QModelIndex CPatternsModel::editData(const QModelIndex& idx, const QString& alias, const QString& regex, Qt::CheckState isDefault, Qt::CheckState isCombine)
+QModelIndex CPatternsModel::editData(const QModelIndex& idx,
+                                     const QString& alias,
+                                     const QString& regex,
+                                     Qt::CheckState isDefault,
+                                     Qt::CheckState isCombine)
 {
     QModelIndex result = idx.sibling(idx.row(), static_cast<int>(ePatternsColumn::AliasTreeLevel));
 
@@ -854,10 +868,17 @@ void CPatternsModel::updatePatternsInPersistency()
                     if( false == regex.isEmpty() )
                     {
                         auto isDefault = V_2_CS( pItem->data(static_cast<int>(ePatternsColumn::Default)) );
-
                         const QString& alias = pItem->data(static_cast<int>(ePatternsColumn::Alias)).get<QString>();
+                        const eRegexPatternType& patternType = pItem->data(static_cast<int>(ePatternsColumn::RegexPatternType)).get<eRegexPatternType>();
+                        const tUUID& UUID = pItem->data(static_cast<int>(ePatternsColumn::UUID)).get<tUUID>();
+                        const tPatternReferences& patternsReferences = pItem->data(static_cast<int>(ePatternsColumn::RegexReferences)).get<tPatternReferences>();
 
-                        ISettingsManager::tAliasItem aliasItem(isDefault == Qt::Checked, alias, regex);
+                        ISettingsManager::tAliasItem aliasItem(isDefault == Qt::Checked,
+                                                               alias,
+                                                               regex,
+                                                               patternType,
+                                                               UUID,
+                                                               patternsReferences);
                         aliasVec.push_back(aliasItem);
                     }
                 }

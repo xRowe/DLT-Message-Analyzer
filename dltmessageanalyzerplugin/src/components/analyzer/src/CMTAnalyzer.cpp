@@ -304,7 +304,7 @@ void CMTAnalyzer::portionRegexAnalysisFinished( const tPortionRegexAnalysisFinis
            false == requestIt->bUML_Req_Res_Ev_DuplicateFound)
         {
             requestIt->bUML_Req_Res_Ev_DuplicateFound = true;
-            SEND_WRN(QString("[CMTAnalyzer][%1] Warning! Duplicated (UEV|URT|URS) UML items detected in the result string."
+            SEND_WRN(QString("[CMTAnalyzer][%1] Warning! Duplicated (UEV|URT|URS) UML items detected in the result string. "
                              "\"First win\" strategy will be applied. Check the input regex. "
                              "The result diagram might be not what you expect to get.").arg(__FUNCTION__));
         }
