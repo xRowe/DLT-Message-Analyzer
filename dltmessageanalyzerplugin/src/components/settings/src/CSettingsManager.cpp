@@ -22,14 +22,21 @@
 
 static const QString sSettingsManager_Directory = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + QDir::separator() + ".DLT-Message-Analyzer";
 static const QString sSettingsManager_Regex_SubDirectory = "regexes";
+static const QString sSettingsManager_RegexUsageStatistics_SubDirectory = "regex_usage_statistics";
 static const QString sSettingsManager_User_SettingsFile = "user_settings.json";
 static const QString sSettingsManager_Root_SettingsFile = "root_settings.json";
 
 static const QString sSettingsManagerVersionKey = "settingsManagerVersion";
 static const QString sAliasesKey = "aliases";
+static const QString sRegexUsageStatisticsKey = "regexUsageStatistics";
+static const QString sUsernameKey = "username";
+static const QString sRegexInputFieldHeight = "regexInputFieldHeight";
 static const QString sAliasKey = "alias";
 static const QString sRegexKey = "regex";
 static const QString sIsDefaultKey = "isDefault";
+static const QString sUsageCounterKey = "usageCounter";
+static const QString sUpdateDateTimeKey = "updateDateTimeKey";
+static const QString sRegexUsageStatisticsItemTypeKey = "regexUsageStatisticsItemType";
 static const QString sNumberOfThreadsKey = "numberOfThreads";
 static const QString sIsContinuousSearchKey = "isContinuousSearch";
 static const QString sCopySearchResultAsHTMLKey = "copySearchResultAsHTML";
@@ -49,6 +56,7 @@ static const QString sSearchResultHighlightingGradientKey = "searchResultHighlig
 static const QString sNumberOfColorsKey = "numberOfColors";
 static const QString sSearchResultColumnsVisibilityMapKey = "searchResultColumnsVisibilityMap";
 static const QString sSearchResultColumnsCopyPasteMapKey = "searchResultColumnsCopyPasteMap";
+static const QString sSearchResultColumnsSearchMapKey = "searchResultColumnsSearchMap";
 static const QString sMarkTimeStampWithBold = "markTimeStampWithBold";
 static const QString sPatternsColumnsVisibilityMapKey = "patternsColumnsVisibilityMap";
 static const QString sPatternsColumnsCopyPasteMapKey = "patternsColumnsCopyPasteMap";
@@ -67,6 +75,8 @@ static const QString sUML_ShowArgumentsKey = "UML_ShowArguments";
 static const QString sUML_WrapOutputKey = "UML_WrapOutput";
 static const QString sUML_AutonumberKey = "UML_Autonumber";
 
+static const QString sPlotViewFeatureActiveKey = "PlotViewFeatureActive";
+
 static const QString sFiltersCompletion_CaseSensitiveKey = "FiltersCompletion_CaseSensitive";
 static const QString sFiltersCompletion_MaxNumberOfSuggestionsKey = "FiltersCompletion_MaxNumberOfSuggestions";
 static const QString sFiltersCompletion_MaxCharactersInSuggestionKey = "FiltersCompletion_MaxCharactersInSuggestion";
@@ -81,8 +91,32 @@ static const QString sJavaPathMode = "JavaPathMode";
 static const QString sJavaPathEnvVar = "JavaPathEnvVar";
 static const QString sJavaCustomPath = "JavaCustomPath";
 
+static const QString sGroupedViewFeatureActive = "GroupedViewFeatureActive";
+
+static const QString sRegexCompletion_CaseSensitiveKey = "RegexCompletion_CaseSensitive";
+static const QString sRegexCompletion_SearchPolicyKey = "RegexCompletion_SearchPolicy";
+
 static const tSettingsManagerVersion sDefaultSettingsManagerVersion = static_cast<tSettingsManagerVersion>(-1);
-static const tSettingsManagerVersion sCurrentSettingsManagerVersion = 1u; // current version of settings manager used by SW.
+static const tSettingsManagerVersion sCurrentSettingsManagerVersion = 2u; // current version of settings manager used by SW.
+
+static QString getCurrentUserName()
+{
+#ifdef Q_OS_WIN
+    // On Windows, use USERNAME
+    QString username = QString::fromLocal8Bit(qgetenv("USERNAME"));
+#else
+    // On Linux/macOS, use USER
+    QString username = QString::fromLocal8Bit(qgetenv("USER"));
+#endif
+
+    // Handle empty username (in case the environment variable is missing)
+    if (username.isEmpty())
+    {
+        username = "UnknownUser";  // Fallback value
+    }
+
+    return username;
+}
 
 static tSearchResultColumnsVisibilityMap fillInDefaultSearchResultColumnsVisibilityMap()
 {
@@ -90,6 +124,7 @@ static tSearchResultColumnsVisibilityMap fillInDefaultSearchResultColumnsVisibil
 
     // fields, which are visible by default
     result.insert(eSearchResultColumn::UML_Applicability, true);
+    result.insert(eSearchResultColumn::PlotView_Applicability, true);
     result.insert(eSearchResultColumn::Index, true);
     result.insert(eSearchResultColumn::Time, true);
     result.insert(eSearchResultColumn::Timestamp, true);
@@ -126,6 +161,7 @@ static tSearchResultColumnsVisibilityMap fillInDefaultSearchResultCopyPasteMap()
 
     // fields, which are not copied by default
     result.insert(eSearchResultColumn::UML_Applicability, false);
+    result.insert(eSearchResultColumn::PlotView_Applicability, false);
     result.insert(eSearchResultColumn::Time, false);
     result.insert(eSearchResultColumn::Count, false);
     result.insert(eSearchResultColumn::SessionId, false);
@@ -139,6 +175,35 @@ static tSearchResultColumnsVisibilityMap fillInDefaultSearchResultCopyPasteMap()
 
 static const tSearchResultColumnsVisibilityMap sDefaultSearchResultColumnsCopyPasteMap
 = fillInDefaultSearchResultCopyPasteMap();
+
+static tSearchResultColumnsVisibilityMap fillInDefaultSearchResultSearchMap()
+{
+    tSearchResultColumnsVisibilityMap result;
+
+    // fields, which are searched by default
+    result.insert(eSearchResultColumn::Apid, true);
+    result.insert(eSearchResultColumn::Ctid, true);
+    result.insert(eSearchResultColumn::Payload, true);
+
+    // fields, which are not searched by default
+    result.insert(eSearchResultColumn::Index, false);
+    result.insert(eSearchResultColumn::Timestamp, false);
+    result.insert(eSearchResultColumn::Ecuid, false);
+    result.insert(eSearchResultColumn::UML_Applicability, false);
+    result.insert(eSearchResultColumn::PlotView_Applicability, false);
+    result.insert(eSearchResultColumn::Time, false);
+    result.insert(eSearchResultColumn::Count, false);
+    result.insert(eSearchResultColumn::SessionId, false);
+    result.insert(eSearchResultColumn::Type, false);
+    result.insert(eSearchResultColumn::Subtype, false);
+    result.insert(eSearchResultColumn::Mode, false);
+    result.insert(eSearchResultColumn::Args, false);
+
+    return result;
+}
+
+static const tSearchResultColumnsVisibilityMap sDefaultSearchResultColumnsSearchMap
+    = fillInDefaultSearchResultSearchMap();
 
 static tPatternsColumnsVisibilityMap fillInDefaultPatternsColumnsVisibilityMap()
 {
@@ -213,214 +278,284 @@ static const tGroupedViewColumnsVisibilityMap sDefaultGroupedViewColumnsVisibili
 
 CSettingsManager::CSettingsManager():
     mSetting_SettingsManagerVersion(createArithmeticSettingsItem<tSettingsManagerVersion>(sSettingsManagerVersionKey,
-        [this](const tSettingsManagerVersion& data){settingsManagerVersionChanged(data);},
+        [this](const tSettingsManagerVersion&,
+               const tSettingsManagerVersion& data){settingsManagerVersionChanged(data);},
         [this](){tryStoreRootConfig();},
         sDefaultSettingsManagerVersion)),
-    mSetting_Aliases(createAliasItemVecSettingsItem(sAliasesKey,
-        [this](const tAliasItemVec& data){ aliasesChanged(data); },
+    mSetting_Aliases(createAliasItemMapSettingsItem(sAliasesKey,
+        [this](const tAliasItemMap&, const tAliasItemMap& data){ aliasesChanged(data); },
         [this]()
         {
             QString regexSettingsFilePath = getRegexDirectory() + QDir::separator() + mSetting_SelectedRegexFile.getData();
             storeRegexConfigCustomPath(regexSettingsFilePath);
         },
-                                                   tAliasItemVec())),
+                                                   tAliasItemMap())),
     mSetting_NumberOfThreads(createRangedArithmeticSettingsItem<int>(sNumberOfThreadsKey,
-        [this](const int& data){numberOfThreadsChanged(data);},
+        [this](const int&, const int& data){numberOfThreadsChanged(data);},
         [this](){tryStoreSettingsConfig();},
         TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(1, QThread::idealThreadCount())),
         1)),
     mSetting_ContinuousSearch(createBooleanSettingsItem(sIsContinuousSearchKey,
-        [this](const bool& data){continuousSearchChanged(data);},
+        [this](const bool&, const bool& data){continuousSearchChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_CopySearchResultAsHTML(createBooleanSettingsItem(sCopySearchResultAsHTMLKey,
-        [this](const bool& data){copySearchResultAsHTMLChanged(data);},
+        [this](const bool&, const bool& data){copySearchResultAsHTMLChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_MinimizePatternsViewOnSelection(createBooleanSettingsItem(sMinimizePatternsViewOnSelectionKey,
-        [this](const bool& data){minimizePatternsViewOnSelectionChanged(data);},
+        [this](const bool&, const bool& data){minimizePatternsViewOnSelectionChanged(data);},
         [this](){tryStoreSettingsConfig();},
         false)),
     mSetting_WriteSettingsOnEachUpdate(createBooleanSettingsItem(sWriteSettingsOnEachUpdateChangedKey,
-        [this](const bool& data){writeSettingsOnEachUpdateChanged(data);},
+        [this](const bool&, const bool& data){writeSettingsOnEachUpdateChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_CacheEnabled(createBooleanSettingsItem(sCacheEnabledKey,
-        [this](const bool& data){cacheEnabledChanged(data);},
+        [this](const bool&, const bool& data){cacheEnabledChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_CacheMaxSizeMB(createRangedArithmeticSettingsItem<tCacheSizeMB>(sCacheMaxSizeMBKey,
-        [this](const tCacheSizeMB& data){cacheMaxSizeMBChanged(data);},
+        [this](const tCacheSizeMB&, const tCacheSizeMB& data){cacheMaxSizeMBChanged(data);},
         [this](){tryStoreSettingsConfig();},
         TRangedSettingItem<tCacheSizeMB>::tOptionalAllowedRange(TRangedSettingItem<tCacheSizeMB>::tAllowedRange(0, getRAMSizeUnchecked())),
         512)),
     mSetting_RDPMode(createBooleanSettingsItem(sRDPModeKey,
-        [this](const bool& data){RDPModeChanged(data);},
+        [this](const bool&, const bool& data){RDPModeChanged(data);},
         [this](){tryStoreSettingsConfig();},
         false)),
     mSetting_RegexMonoHighlightingColor(createColorSettingsItem(sRegexMonoHighlightingColosKey,
-        [this](const QColor& data){regexMonoHighlightingColorChanged(data);},
+        [this](const QColor&, const QColor& data){regexMonoHighlightingColorChanged(data);},
         [this](){tryStoreSettingsConfig();},
         QColor(150,0,0))),
     mSetting_HighlightActivePatterns(createBooleanSettingsItem(sHighlightActivePatternsKey,
-        [this](const bool& data){highlightActivePatternsChanged(data);},
+        [this](const bool&, const bool& data){highlightActivePatternsChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_PatternsHighlightingColor(createColorSettingsItem(sPatternsHighlightingColorKey,
-        [this](const QColor& data){patternsHighlightingColorChanged(data);},
+        [this](const QColor&, const QColor& data){patternsHighlightingColorChanged(data);},
         [this](){tryStoreSettingsConfig();},
         QColor(0,150,0))),
     mSetting_SearchResultMonoColorHighlighting(createBooleanSettingsItem(sSearchResultMonoColorHighlightingKey,
-        [this](const bool& data){searchResultMonoColorHighlightingChanged(data);},
+        [this](const bool&, const bool& data){searchResultMonoColorHighlightingChanged(data);},
         [this](){tryStoreSettingsConfig();},
         false)),
     mSearchResultHighlightingGradientProtector(),
     mSetting_SearchResultHighlightingGradient(createHighlightingGradientSettingsItem(sSearchResultHighlightingGradientKey,
-        [this](const tHighlightingGradient& data){searchResultHighlightingGradientChanged(data);},
+        [this](const tHighlightingGradient&,
+               const tHighlightingGradient& data){searchResultHighlightingGradientChanged(data);},
         [this](){tryStoreSettingsConfig();},
         tHighlightingGradient(QColor(154,0,146), QColor(1,162,165), 3))),
     mSetting_SearchResultColumnsVisibilityMap(createSearchResultColumnsVisibilityMapSettingsItem(sSearchResultColumnsVisibilityMapKey,
-        [this](const tSearchResultColumnsVisibilityMap& data){searchResultColumnsVisibilityMapChanged(data);},
+        [this](const tSearchResultColumnsVisibilityMap&,
+               const tSearchResultColumnsVisibilityMap& data){searchResultColumnsVisibilityMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultSearchResultColumnsVisibilityMap)),
     mSetting_SearchResultColumnsCopyPasteMap(createSearchResultColumnsVisibilityMapSettingsItem(sSearchResultColumnsCopyPasteMapKey,
-        [this](const tSearchResultColumnsVisibilityMap& data){searchResultColumnsCopyPasteMapChanged(data);},
+        [this](const tSearchResultColumnsVisibilityMap&,
+               const tSearchResultColumnsVisibilityMap& data){searchResultColumnsCopyPasteMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultSearchResultColumnsCopyPasteMap)),
+    mSetting_SearchResultColumnsSearchMap(createSearchResultColumnsVisibilityMapSettingsItem(sSearchResultColumnsSearchMapKey,
+          [this](const tSearchResultColumnsVisibilityMap&,
+                 const tSearchResultColumnsVisibilityMap& data){searchResultColumnsSearchMapChanged(data);},
+          [this](){tryStoreSettingsConfig();},
+          sDefaultSearchResultColumnsSearchMap)),
     mSetting_MarkTimeStampWithBold(createBooleanSettingsItem(sMarkTimeStampWithBold,
-        [this](const bool& data){markTimeStampWithBoldChanged(data);},
+        [this](const bool&, const bool& data){markTimeStampWithBoldChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_PatternsColumnsVisibilityMap(createPatternsColumnsVisibilityMapSettingsItem(sPatternsColumnsVisibilityMapKey,
-        [this](const tPatternsColumnsVisibilityMap& data){patternsColumnsVisibilityMapChanged(data);},
+        [this](const tPatternsColumnsVisibilityMap&,
+               const tPatternsColumnsVisibilityMap& data){patternsColumnsVisibilityMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultPatternsColumnsVisibilityMap)),
     mSetting_PatternsColumnsCopyPasteMap(createPatternsColumnsVisibilityMapSettingsItem(sPatternsColumnsCopyPasteMapKey,
-        [this](const tPatternsColumnsVisibilityMap& data){patternsColumnsCopyPasteMapChanged(data);},
+        [this](const tPatternsColumnsVisibilityMap&,
+               const tPatternsColumnsVisibilityMap& data){patternsColumnsCopyPasteMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultPatternsColumnsCopyPasteMap)),
     mSetting_CaseSensitiveRegex(createBooleanSettingsItem(sCaseSensitiveRegex,
-        [this](const bool& data){caseSensitiveRegexChanged(data);},
+        [this](const bool&, const bool& data){caseSensitiveRegexChanged(data);},
         [this](){tryStoreSettingsConfig();},
         false)),
     mSetting_RegexFiltersColumnsVisibilityMap(createRegexFiltersColumnsVisibilityMapSettingsItem(sRegexFiltersColumnsVisibilityMapKey,
-        [this](const tRegexFiltersColumnsVisibilityMap& data){regexFiltersColumnsVisibilityMapChanged(data);},
+        [this](const tRegexFiltersColumnsVisibilityMap&,
+               const tRegexFiltersColumnsVisibilityMap& data){regexFiltersColumnsVisibilityMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultRegexFiltersColumnsVisibilityMap)),
     mSetting_FilterVariables(createBooleanSettingsItem(sFilterVariablesKey,
-        [this](const bool& data){filterVariablesChanged(data);},
+        [this](const bool&, const bool& data){filterVariablesChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_SelectedRegexFile(createStringSettingsItem(sSelectedRegexFile,
-        [this](const QString& data)
+        [this](const QString& oldData, const QString& data)
         {
-            clearRegexConfig();
-
             QString regexSettingsFilePath = getRegexDirectory() + QDir::separator() + data;
+
+            clearRegexConfig();
             loadRegexConfigCustomPath(regexSettingsFilePath);
+
+            QString oldRegexUsageStatisticsFilePath = getRegexUsageStatisticsDirectory() + QDir::separator() + oldData;
+
+            if(true == mbInitialised && false == oldData.isEmpty())
+            {
+                auto result = storeRegexUsageStatisticsDataCustomPath(oldRegexUsageStatisticsFilePath);
+
+                if(false == result.bResult)
+                {
+                    SEND_ERR(QString("Was not able to store regex usage statistics due "
+                                     "to the following error: %1").arg(result.err));
+                }
+            }
+
+            clearRegexUsageStatisticsData();
+            QString newRegexUsageStatisticsFilePath = getRegexUsageStatisticsDirectory() + QDir::separator() + data;
+            loadRegexUsageStatisticsDataCustomPath(newRegexUsageStatisticsFilePath);
 
             selectedRegexFileChanged(data);
         },
         [this](){tryStoreSettingsConfig();},
         sDefaultRegexFileName)),
     mSetting_GroupedViewColumnsVisibilityMap(createGroupedViewColumnsVisibilityMapSettingsItem(sGroupedViewColumnsVisibilityMapKey,
-        [this](const tGroupedViewColumnsVisibilityMap& data){groupedViewColumnsVisibilityMapChanged(data);},
+        [this](const tGroupedViewColumnsVisibilityMap&,
+               const tGroupedViewColumnsVisibilityMap& data){groupedViewColumnsVisibilityMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultGroupedViewColumnsVisibilityMap)),
     mSetting_GroupedViewColumnsCopyPasteMap(createGroupedViewColumnsVisibilityMapSettingsItem(sGroupedViewColumnsCopyPasteMapKey,
-        [this](const tGroupedViewColumnsVisibilityMap& data){groupedViewColumnsCopyPasteMapChanged(data);},
+        [this](const tGroupedViewColumnsVisibilityMap&,
+               const tGroupedViewColumnsVisibilityMap& data){groupedViewColumnsCopyPasteMapChanged(data);},
         [this](){tryStoreSettingsConfig();},
         sDefaultGroupedViewColumnsVisibilityMap)),
     mSetting_SubFilesHandlingStatus(createBooleanSettingsItem(sSubFilesHandlingStatusKey,
-        [this](const bool& data){subFilesHandlingStatusChanged(data);},
+        [this](const bool&, const bool& data){subFilesHandlingStatusChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_Font_SearchView(createFontSettingsItem(sFont_SearchView,
-        [this](const QFont& data){font_SearchViewChanged(data);},
+        [this](const QFont&, const QFont& data){font_SearchViewChanged(data);},
         [this](){tryStoreSettingsConfig();},
         QFont("sans-serif", 9))),
     mUML_FeatureActiveProtector(),
     mSetting_UML_FeatureActive(createBooleanSettingsItem(sUML_FeatureActiveKey,
-        [this](const bool& data){UML_FeatureActiveChanged(data);},
+        [this](const bool&, const bool& data){UML_FeatureActiveChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_UML_MaxNumberOfRowsInDiagram(createArithmeticSettingsItem<int>(sUML_MaxNumberOfRowsInDiagramKey,
-        [this](const int& data){UML_MaxNumberOfRowsInDiagramChanged(data);},
+        [this](const int&, const int& data){UML_MaxNumberOfRowsInDiagramChanged(data);},
         [this](){tryStoreRootConfig();},
         1000)),
     mSetting_UML_ShowArguments(createBooleanSettingsItem(sUML_ShowArgumentsKey,
-        [this](const bool& data){UML_ShowArgumentsChanged(data);},
+        [this](const bool&, const bool& data){UML_ShowArgumentsChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_UML_WrapOutput(createBooleanSettingsItem(sUML_WrapOutputKey,
-        [this](const bool& data){UML_WrapOutputChanged(data);},
+        [this](const bool&, const bool& data){UML_WrapOutputChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_UML_Autonumber(createBooleanSettingsItem(sUML_AutonumberKey,
-        [this](const bool& data){UML_AutonumberChanged(data);},
+        [this](const bool&, const bool& data){UML_AutonumberChanged(data);},
+        [this](){tryStoreSettingsConfig();},
+        true)),
+    mPlotViewFeatureActiveProtector(),
+    mSetting_PlotViewFeatureActive(createBooleanSettingsItem(sPlotViewFeatureActiveKey,
+        [this](const bool&, const bool& data){plotViewFeatureActiveChanged(data);},
         [this](){tryStoreSettingsConfig();},
         true)),
     mSetting_FiltersCompletion_CaseSensitive(createBooleanSettingsItem(sFiltersCompletion_CaseSensitiveKey,
-       [this](const bool& data){filtersCompletion_CaseSensitiveChanged(data);},
+       [this](const bool&, const bool& data){filtersCompletion_CaseSensitiveChanged(data);},
        [this](){tryStoreSettingsConfig();},
        false)),
     mSetting_FiltersCompletion_MaxNumberOfSuggestions(createRangedArithmeticSettingsItem<int>(sFiltersCompletion_MaxNumberOfSuggestionsKey,
-       [this](const int& data){filtersCompletion_MaxNumberOfSuggestionsChanged(data);},
+       [this](const int&, const int& data){filtersCompletion_MaxNumberOfSuggestionsChanged(data);},
        [this](){tryStoreSettingsConfig();},
        TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(1, 1000)),
        200)),
     mSetting_FiltersCompletion_MaxCharactersInSuggestion(createRangedArithmeticSettingsItem<int>(sFiltersCompletion_MaxCharactersInSuggestionKey,
-       [this](const int& data){filtersCompletion_MaxCharactersInSuggestionChanged(data);},
+       [this](const int&, const int& data){filtersCompletion_MaxCharactersInSuggestionChanged(data);},
        [this](){tryStoreSettingsConfig();},
        TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(1, 1000)),
        200)),
     mSetting_FiltersCompletion_CompletionPopUpWidth(createRangedArithmeticSettingsItem<int>(sFiltersCompletion_CompletionPopUpWidthKey,
-       [this](const int& data){filtersCompletion_CompletionPopUpWidthChanged(data);},
+       [this](const int&, const int& data){filtersCompletion_CompletionPopUpWidthChanged(data);},
        [this](){tryStoreSettingsConfig();},
        TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(100, 1000)),
        400)),
     mSetting_FiltersCompletion_SearchPolicy(createBooleanSettingsItem(sFiltersCompletion_SearchPolicyKey,
-       [this](const bool& data){filtersCompletion_SearchPolicyChanged(data);},
+       [this](const bool&, const bool& data){filtersCompletion_SearchPolicyChanged(data);},
+       [this](){tryStoreSettingsConfig();},
+       false)),
+    mSetting_RegexCompletion_CaseSensitive(createBooleanSettingsItem(sRegexCompletion_CaseSensitiveKey,
+       [this](const bool&, const bool& data){regexCompletion_CaseSensitiveChanged(data);},
+       [this](){tryStoreSettingsConfig();},
+       false)),
+    mSetting_RegexCompletion_SearchPolicy(createBooleanSettingsItem(sRegexCompletion_SearchPolicyKey,
+       [this](const bool&, const bool& data){regexCompletion_SearchPolicyChanged(data);},
        [this](){tryStoreSettingsConfig();},
        false)),
     mSetting_SearchViewLastColumnWidthStrategy(createRangedArithmeticSettingsItem<int>(sSearchViewLastColumnWidthStrategyKey,
-        [this](const int& data){searchViewLastColumnWidthStrategyChanged(data);},
+        [this](const int&, const int& data){searchViewLastColumnWidthStrategyChanged(data);},
         [this](){tryStoreSettingsConfig();},
         TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(static_cast<int>(eSearchViewLastColumnWidthStrategy::eReset),
                                                                                               static_cast<int>(eSearchViewLastColumnWidthStrategy::eFitToContent))),
         static_cast<int>(eSearchViewLastColumnWidthStrategy::eFitToContent))),
     mSetting_PlantumlPathMode(createRangedArithmeticSettingsItem<int>(sPlantumlPathMode,
-        [this](const int& data){plantumlPathModeChanged(data);},
+        [this](const int&, const int& data){plantumlPathModeChanged(data);},
         [this](){tryStoreSettingsConfig();},
         TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(static_cast<int>(ePathMode::eUseDefaultPath),
                                                                                               static_cast<int>(ePathMode::eLast) - 1)),
         static_cast<int>(ePathMode::eUseDefaultPath))),
     mSetting_PlantumlPathEnvVar(createStringSettingsItem(sPlantumlPathEnvVar,
-        [this](const QString& data){plantumlPathEnvVarChanged(data);},
+        [this](const QString&, const QString& data){plantumlPathEnvVarChanged(data);},
         [this](){tryStoreSettingsConfig();},
         "")),
     mSetting_PlantumlCustomPath(createStringSettingsItem(sPlantumlCustomPath,
-        [this](const QString& data){plantumlCustomPathChanged(data);},
+        [this](const QString&, const QString& data){plantumlCustomPathChanged(data);},
         [this](){tryStoreSettingsConfig();},
         "")),
     mSetting_JavaPathMode(createRangedArithmeticSettingsItem<int>(sJavaPathMode,
-        [this](const int& data){javaPathModeChanged(data);},
+        [this](const int&, const int& data){javaPathModeChanged(data);},
         [this](){tryStoreSettingsConfig();},
         TRangedSettingItem<int>::tOptionalAllowedRange(TRangedSettingItem<int>::tAllowedRange(static_cast<int>(ePathMode::eUseDefaultPath),
                                                                                               static_cast<int>(ePathMode::eLast) - 1)),
         static_cast<int>(ePathMode::eUseDefaultPath))),
     mSetting_JavaPathEnvVar(createStringSettingsItem(sJavaPathEnvVar,
-        [this](const QString& data){javaPathEnvVarChanged(data);},
+        [this](const QString&, const QString& data){javaPathEnvVarChanged(data);},
         [this](){tryStoreSettingsConfig();},
         "")),
     mSetting_JavaCustomPath(createStringSettingsItem(sJavaCustomPath,
-        [this](const QString& data){javaCustomPathChanged(data);},
+        [this](const QString&, const QString& data){javaCustomPathChanged(data);},
         [this](){tryStoreSettingsConfig();},
         "")),
+    mSetting_GroupedViewFeatureActive(createBooleanSettingsItem(sGroupedViewFeatureActive,
+        [this](const bool&, const bool& data){groupedViewFeatureActiveChanged(data);},
+        [this](){tryStoreSettingsConfig();},
+        true)),
+    mSetting_RegexUsageStatistics(createRegexUsageStatisticsItemMapSettingsItem(sRegexUsageStatisticsKey,
+        [this](const tRegexUsageStatisticsItemMap&,
+               const tRegexUsageStatisticsItemMap& data){ regexUsageStatisticsChanged(data); },
+        []()
+        {
+            // this data is not critical and is stored to file ONLY during exit.
+        },
+        tRegexUsageStatisticsItemMap())),
+    mSetting_Username(createStringSettingsItem(sUsernameKey,
+        [this](const QString&,
+               const QString& data){ usernameChanged(data); },
+        []()
+        {
+            // this data is not critical and is stored to file ONLY during exit.
+        },
+        getCurrentUserName())),
+    mSetting_RegexInputFieldHeight(createArithmeticSettingsItem<int>(sRegexInputFieldHeight,
+        [this](const int&,
+               const int& data){ regexInputFieldHeightChanged(data); },
+        [this](){tryStoreSettingsConfig();},
+        4)),
     mRootSettingItemPtrVec(),
     mUserSettingItemPtrVec(),
     mPatternsSettingItemPtrVec(),
-    mbRootConfigInitialised(false)
+    mRegexUsageStatisticsDataItemPtrVec(),
+    mbInitialised(false)
 {
     /////////////// ROOT SETTINGS ///////////////
     mRootSettingItemPtrVec.push_back(&mSetting_SettingsManagerVersion);
@@ -441,6 +576,7 @@ CSettingsManager::CSettingsManager():
     mUserSettingItemPtrVec.push_back(&mSetting_SearchResultHighlightingGradient);
     mUserSettingItemPtrVec.push_back(&mSetting_SearchResultColumnsVisibilityMap);
     mUserSettingItemPtrVec.push_back(&mSetting_SearchResultColumnsCopyPasteMap);
+    mUserSettingItemPtrVec.push_back(&mSetting_SearchResultColumnsSearchMap);
     mUserSettingItemPtrVec.push_back(&mSetting_MarkTimeStampWithBold);
     mUserSettingItemPtrVec.push_back(&mSetting_PatternsColumnsVisibilityMap);
     mUserSettingItemPtrVec.push_back(&mSetting_PatternsColumnsCopyPasteMap);
@@ -457,11 +593,14 @@ CSettingsManager::CSettingsManager():
     mUserSettingItemPtrVec.push_back(&mSetting_UML_ShowArguments);
     mUserSettingItemPtrVec.push_back(&mSetting_UML_WrapOutput);
     mUserSettingItemPtrVec.push_back(&mSetting_UML_Autonumber);
+    mUserSettingItemPtrVec.push_back(&mSetting_PlotViewFeatureActive);
     mUserSettingItemPtrVec.push_back(&mSetting_FiltersCompletion_CaseSensitive);
     mUserSettingItemPtrVec.push_back(&mSetting_FiltersCompletion_MaxNumberOfSuggestions);
     mUserSettingItemPtrVec.push_back(&mSetting_FiltersCompletion_MaxCharactersInSuggestion);
     mUserSettingItemPtrVec.push_back(&mSetting_FiltersCompletion_CompletionPopUpWidth);
     mUserSettingItemPtrVec.push_back(&mSetting_FiltersCompletion_SearchPolicy);
+    mUserSettingItemPtrVec.push_back(&mSetting_RegexCompletion_CaseSensitive);
+    mUserSettingItemPtrVec.push_back(&mSetting_RegexCompletion_SearchPolicy);
     mUserSettingItemPtrVec.push_back(&mSetting_SearchViewLastColumnWidthStrategy);
     mUserSettingItemPtrVec.push_back(&mSetting_PlantumlPathMode);
     mUserSettingItemPtrVec.push_back(&mSetting_PlantumlPathEnvVar);
@@ -469,9 +608,15 @@ CSettingsManager::CSettingsManager():
     mUserSettingItemPtrVec.push_back(&mSetting_JavaPathMode);
     mUserSettingItemPtrVec.push_back(&mSetting_JavaPathEnvVar);
     mUserSettingItemPtrVec.push_back(&mSetting_JavaCustomPath);
+    mUserSettingItemPtrVec.push_back(&mSetting_GroupedViewFeatureActive);
+    mUserSettingItemPtrVec.push_back(&mSetting_Username);
+    mUserSettingItemPtrVec.push_back(&mSetting_RegexInputFieldHeight);
 
     /////////////// PATTERNS SETTINGS ///////////////
     mPatternsSettingItemPtrVec.push_back(&mSetting_Aliases);
+
+    /////////////// REGEX USAGE STATISTICS //////////
+    mRegexUsageStatisticsDataItemPtrVec.push_back(&mSetting_RegexUsageStatistics);
 }
 
 void CSettingsManager::tryStoreSettingsConfig()
@@ -492,7 +637,7 @@ void CSettingsManager::tryStoreRootConfig()
 
 CSettingsManager::tOperationResult CSettingsManager::backwardCompatibility()
 {
-    SEND_MSG(QString("[CSettingsManager] Performing backward compatibility check."));
+    SEND_MSG(QString("[CSettingsManager] Performing setting manager update."));
 
     auto result = backwardCompatibility_V0_V1();
 
@@ -500,11 +645,21 @@ CSettingsManager::tOperationResult CSettingsManager::backwardCompatibility()
     {
         result = loadRootConfig(); // load root config. It should be available starting version 0
 
+        auto cachedSettingsMangerVersion = getSettingsManagerVersion();
+
+        SEND_MSG(QString("[CSettingsManager] Persisted settings manager verison - %1.").arg(getSettingsManagerVersion()));
+        SEND_MSG(QString("[CSettingsManager] Target settings manager verison - %1.").arg(sCurrentSettingsManagerVersion));
+
+        if(sCurrentSettingsManagerVersion != cachedSettingsMangerVersion)
+        {
+            if(cachedSettingsMangerVersion == 1u && sCurrentSettingsManagerVersion == 2)
+            {
+                result = backwardCompatibility_V1_V2();
+            }
+        }
+
         if(true == result.bResult)
         {
-            SEND_MSG(QString("[CSettingsManager] Persisted settings manager verison - %1.").arg(getSettingsManagerVersion()));
-            SEND_MSG(QString("[CSettingsManager] Target settings manager verison - %1.").arg(sCurrentSettingsManagerVersion));
-
             setSettingsManagerVersion( sCurrentSettingsManagerVersion ); // if backward compatibility was successful, we need to update the settings manager version
         }
     }
@@ -673,12 +828,12 @@ TSettingItem<tHighlightingGradient> CSettingsManager::createHighlightingGradient
                              updateFileFunc);
 }
 
-TSettingItem<CSettingsManager::tAliasItemVec> CSettingsManager::createAliasItemVecSettingsItem(const QString& key,
-                                             const TSettingItem<tAliasItemVec>::tUpdateDataFunc& updateDataFunc,
-                                             const TSettingItem<tAliasItemVec>::tUpdateSettingsFileFunc& updateFileFunc,
-                                             const tAliasItemVec& defaultValue) const
+TSettingItem<CSettingsManager::tAliasItemMap> CSettingsManager::createAliasItemMapSettingsItem(const QString& key,
+                                             const TSettingItem<tAliasItemMap>::tUpdateDataFunc& updateDataFunc,
+                                             const TSettingItem<tAliasItemMap>::tUpdateSettingsFileFunc& updateFileFunc,
+                                             const tAliasItemMap& defaultValue) const
 {
-    auto writeFunc = [&key](const tAliasItemVec& value)->QJsonObject
+    auto writeFunc = [&key](const tAliasItemMap& value)->QJsonObject
     {
         QJsonObject aliases;
         QJsonArray arrayAliases;
@@ -698,8 +853,8 @@ TSettingItem<CSettingsManager::tAliasItemVec> CSettingsManager::createAliasItemV
     };
 
     auto readFunc = [](const QJsonValueRef& JSONItem,
-                       tAliasItemVec& data,
-                       const tAliasItemVec&)->bool
+                       tAliasItemMap& data,
+                       const tAliasItemMap&)->bool
     {
         bool bResult = false;
 
@@ -732,7 +887,8 @@ TSettingItem<CSettingsManager::tAliasItemVec> CSettingsManager::createAliasItemV
                                 bIsDefault = isDefault->toBool();
                             }
 
-                            data.push_back(tAliasItem(bIsDefault, alias->toString(), regex->toString()));
+                            QString aliasStr = alias->toString();
+                            data.insert(aliasStr, tAliasItem(bIsDefault, aliasStr, regex->toString()));
                         }
                     }
                 }
@@ -744,7 +900,103 @@ TSettingItem<CSettingsManager::tAliasItemVec> CSettingsManager::createAliasItemV
         return bResult;
     };
 
-    return TSettingItem<tAliasItemVec>(key,
+    return TSettingItem<tAliasItemMap>(key,
+                             defaultValue,
+                             writeFunc,
+                             readFunc,
+                             updateDataFunc,
+                             updateFileFunc);
+}
+
+TSettingItem<CSettingsManager::tRegexUsageStatisticsItemMap> CSettingsManager::createRegexUsageStatisticsItemMapSettingsItem(const QString& key,
+                                             const TSettingItem<tRegexUsageStatisticsItemMap>::tUpdateDataFunc& updateDataFunc,
+                                             const TSettingItem<tRegexUsageStatisticsItemMap>::tUpdateSettingsFileFunc& updateFileFunc,
+                                             const tRegexUsageStatisticsItemMap& defaultValue) const
+{
+    auto writeFunc = [&key](const tRegexUsageStatisticsItemMap& value)->QJsonObject
+    {
+        QJsonObject aliases;
+        QJsonArray arrayRegexUsageSttistics;
+
+        for (auto it = value.keyValueBegin(); it != value.keyValueEnd(); ++it)
+        {
+            for(auto jt = it->second.keyValueBegin(); jt != it->second.keyValueEnd(); ++jt)
+            {
+                QJsonObject obj;
+                obj.insert( sRegexUsageStatisticsItemTypeKey, static_cast<int>(it->first) );
+                obj.insert( sRegexKey, QJsonValue( jt->first ) );
+                obj.insert( sUsageCounterKey, jt->second.usageCounter );
+                obj.insert( sUpdateDateTimeKey, jt->second.updateDateTime.toString("yyyy-MM-dd HH:mm:ss.zzz") );
+                arrayRegexUsageSttistics.append( obj );
+            }
+        }
+
+        QJsonObject result;
+        result.insert( key, QJsonValue( arrayRegexUsageSttistics ) );
+
+        return result;
+    };
+
+    auto readFunc = [](const QJsonValueRef& JSONItem,
+                       tRegexUsageStatisticsItemMap& data,
+                       const tRegexUsageStatisticsItemMap&)->bool
+    {
+        bool bResult = false;
+
+        if(true == JSONItem.isArray())
+        {
+            data.clear();
+
+            auto aliasesArray = JSONItem.toArray();
+
+            for( const auto aliasObj : aliasesArray)
+            {
+                if(true == aliasObj.isObject())
+                {
+                    QJsonObject obj = aliasObj.toObject();
+
+                    auto regexObj = obj.find(sRegexKey);
+
+                    if(regexObj != obj.end() && regexObj->isString())
+                    {
+                        auto usageCounterObj = obj.find(sUsageCounterKey);
+
+                        if(usageCounterObj != obj.end() && usageCounterObj->isDouble())
+                        {
+                            int usageCounter = static_cast<int>(usageCounterObj->toDouble());
+
+                            auto itemTypeObj = obj.find(sRegexUsageStatisticsItemTypeKey);
+                            if(itemTypeObj != obj.end() && itemTypeObj->isDouble())
+                            {
+                                eRegexUsageStatisticsItemType itemType =
+                                        static_cast<eRegexUsageStatisticsItemType>(itemTypeObj->toDouble());
+
+                                auto updateDateTimeObj = obj.find(sUpdateDateTimeKey);
+
+                                if(updateDateTimeObj != obj.end() && updateDateTimeObj->isString())
+                                {
+                                    auto updateDateTime = QDateTime::fromString(updateDateTimeObj->toString(), "yyyy-MM-dd HH:mm:ss.zzz");
+
+                                    if(true == updateDateTime.isValid())
+                                    {
+                                        auto& updteItem = data[itemType][regexObj->toString()];
+                                        updteItem.usageCounter = usageCounter;
+                                        updteItem.updateDateTime = updateDateTime;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                bResult = true;
+            }
+        }
+
+        return bResult;
+    };
+
+    return TSettingItem<tRegexUsageStatisticsItemMap>(key,
                              defaultValue,
                              writeFunc,
                              readFunc,
@@ -1168,7 +1420,7 @@ CSettingsManager::tOperationResult CSettingsManager::loadRootConfig()
     QString rootConfigPath = getRootSettingsFilepath();
 
     QFile jsonFile(rootConfigPath);
-    if(jsonFile.open(QFile::ReadOnly))
+    if(jsonFile.open(QFile::ReadWrite))
     {
         auto jsonDoc =  QJsonDocument().fromJson(jsonFile.readAll());
 
@@ -1235,6 +1487,12 @@ CSettingsManager::tOperationResult CSettingsManager::storeConfigs()
         {
             QString regexSettingsFilePath = getRegexDirectory() + QDir::separator() + mSetting_SelectedRegexFile.getData();
             result = storeRegexConfigCustomPath(regexSettingsFilePath);
+
+            if(true == result.bResult)
+            {
+                QString regexUsageStatisticsFilePath = getRegexUsageStatisticsDirectory() + QDir::separator() + mSetting_SelectedRegexFile.getData();
+                result = storeRegexUsageStatisticsDataCustomPath(regexUsageStatisticsFilePath);
+            }
         }
     }
 
@@ -1255,6 +1513,12 @@ CSettingsManager::tOperationResult CSettingsManager::loadConfigs()
             {
                 QString regexSettingsFilePath = getRegexDirectory() + QDir::separator() + mSetting_SelectedRegexFile.getData();
                 result = loadRegexConfigCustomPath(regexSettingsFilePath); // load regexes
+
+                if( true == result.bResult )
+                {
+                    QString regexUsageStatisticsFilePath = getRegexUsageStatisticsDirectory() + QDir::separator() + mSetting_SelectedRegexFile.getData();
+                    result = loadRegexUsageStatisticsDataCustomPath(regexUsageStatisticsFilePath); // load regex usage statistics
+                }
             }
         }
     }
@@ -1269,6 +1533,7 @@ CSettingsManager::tOperationResult CSettingsManager::setUp()
     if(true == result.bResult)
     {
         result = loadConfigs();
+        mbInitialised = true;
     }
 
     return result;
@@ -1291,7 +1556,7 @@ CSettingsManager::tOperationResult CSettingsManager::backwardCompatibility_V0_V1
     // That can be checked only indirectly, based on file-system-based conclusions
     if(false == regexDir.exists()) // regex dir does not exist. Most probably we've faced old system
     {
-        SEND_MSG(QString("[CSettingsManager] Performing backward compatibility iteration from V0 to V1"));
+        SEND_MSG(QString("[CSettingsManager] Performing setting manager update from V0 to V1"));
 
         QDir dir;
         QString configDirPath = sSettingsManager_Directory;
@@ -1369,12 +1634,34 @@ CSettingsManager::tOperationResult CSettingsManager::backwardCompatibility_V0_V1
             result.err = QString( "[%1] Was not able to create directory \"%2\"" ).arg(__FUNCTION__).arg(configDirPath);
         }
 
-        SEND_MSG(QString("[CSettingsManager] BackwardCompatibility_V0_V1 finished with result - %1").arg(true == result.bResult ? "SUCCESSFUL" : "FAILED"));
+        SEND_MSG(QString("[CSettingsManager] Setting manager update from V0 to V1 finished with result - %1").arg(true == result.bResult ? "SUCCESSFUL" : "FAILED"));
     }
     else
     {
-        SEND_MSG(QString("[CSettingsManager] Backward compatibility iteration from V0 to V1 not needed"));
+        SEND_MSG(QString("[CSettingsManager] Setting manager update from V0 to V1 is not needed"));
     }
+
+    return result;
+}
+
+CSettingsManager::tOperationResult CSettingsManager::backwardCompatibility_V1_V2()
+{
+    CSettingsManager::tOperationResult result;
+    result.bResult = true;
+
+    QString regexUsageStatisticsDirPath = getRegexUsageStatisticsDirectory();
+    QDir dir;
+
+    SEND_MSG(QString("[CSettingsManager] Performing setting manager update from V1 to V2"));
+
+    // let's create regex usage statistics directory
+    if(false == dir.mkpath(regexUsageStatisticsDirPath))
+    {
+        result.bResult = false;
+        result.err = QString( "[%1] Was not able to create directory \"%2\"" ).arg(__FUNCTION__).arg(regexUsageStatisticsDirPath);
+    }
+
+    SEND_MSG(QString("[CSettingsManager] Setting manager update from V1 to V2 finished with result - %1").arg(true == result.bResult ? "SUCCESSFUL" : "FAILED"));
 
     return result;
 }
@@ -1384,7 +1671,7 @@ void CSettingsManager::setSettingsManagerVersion(const tSettingsManagerVersion& 
     mSetting_SettingsManagerVersion.setData(val);
 }
 
-void CSettingsManager::setAliases(const tAliasItemVec& val)
+void CSettingsManager::setAliases(const tAliasItemMap& val)
 {
     mSetting_Aliases.setData(val);
 }
@@ -1404,6 +1691,11 @@ void CSettingsManager::setAliasIsDefault(const QString& alias, bool isDefault)
     }
 
     mSetting_Aliases.setData(aliases);
+}
+
+void CSettingsManager::setRegexUsageStatistics(const tRegexUsageStatisticsItemMap& val)
+{
+    mSetting_RegexUsageStatistics.setData(val);
 }
 
 void CSettingsManager::setNumberOfThreads(const int& val)
@@ -1482,6 +1774,11 @@ void CSettingsManager::setSearchResultColumnsCopyPasteMap(const tSearchResultCol
     mSetting_SearchResultColumnsCopyPasteMap.setData(val);
 }
 
+void CSettingsManager::setSearchResultColumnsSearchMap(const tSearchResultColumnsVisibilityMap& val)
+{
+    mSetting_SearchResultColumnsSearchMap.setData(val);
+}
+
 void CSettingsManager::setMarkTimeStampWithBold(bool val)
 {
     mSetting_MarkTimeStampWithBold.setData(val);
@@ -1558,6 +1855,12 @@ void CSettingsManager::setUML_Autonumber(const bool& val)
     mSetting_UML_Autonumber.setData(val);
 }
 
+void CSettingsManager::setPlotViewFeatureActive(const bool& val)
+{
+    std::lock_guard<std::recursive_mutex> lock(*const_cast<std::recursive_mutex*>(&mPlotViewFeatureActiveProtector));
+    mSetting_PlotViewFeatureActive.setData(val);
+}
+
 void CSettingsManager::setFiltersCompletion_CaseSensitive(const bool& val)
 {
     mSetting_FiltersCompletion_CaseSensitive.setData(val);
@@ -1581,6 +1884,26 @@ void CSettingsManager::setFiltersCompletion_CompletionPopUpWidth(const int& val)
 void CSettingsManager::setFiltersCompletion_SearchPolicy(const bool& val)
 {
     mSetting_FiltersCompletion_SearchPolicy.setData(val);
+}
+
+void CSettingsManager::setRegexCompletion_CaseSensitive(const bool& val)
+{
+    mSetting_RegexCompletion_CaseSensitive.setData(val);
+}
+
+void CSettingsManager::setRegexCompletion_SearchPolicy(const bool& val)
+{
+    mSetting_RegexCompletion_SearchPolicy.setData(val);
+}
+
+void CSettingsManager::setUserName(const QString& val)
+{
+    mSetting_Username.setData(val);
+}
+
+void CSettingsManager::setRegexInputFieldHeight(const int& linesNumber)
+{
+    mSetting_RegexInputFieldHeight.setData(linesNumber);
 }
 
 void CSettingsManager::setSearchViewLastColumnWidthStrategy(const int& val)
@@ -1618,6 +1941,11 @@ void CSettingsManager::setJavaCustomPath(const QString& val)
     mSetting_JavaCustomPath.setData(val);
 }
 
+void CSettingsManager::setGroupedViewFeatureActive(bool val)
+{
+    mSetting_GroupedViewFeatureActive.setData(val);
+}
+
 void CSettingsManager::setSelectedRegexFile(const QString& val)
 {
     mSetting_SelectedRegexFile.setData(val);
@@ -1628,9 +1956,14 @@ const tSettingsManagerVersion& CSettingsManager::getSettingsManagerVersion() con
     return mSetting_SettingsManagerVersion.getData();
 }
 
-const CSettingsManager::tAliasItemVec& CSettingsManager::getAliases() const
+const CSettingsManager::tAliasItemMap& CSettingsManager::getAliases() const
 {
     return mSetting_Aliases.getData();
+}
+
+const CSettingsManager::tRegexUsageStatisticsItemMap& CSettingsManager::getRegexUsageStatistics() const
+{
+    return mSetting_RegexUsageStatistics.getData();
 }
 
 const int& CSettingsManager::getNumberOfThreads() const
@@ -1695,8 +2028,8 @@ bool CSettingsManager::getSearchResultMonoColorHighlighting() const
 
 tHighlightingGradient CSettingsManager::getSearchResultHighlightingGradient() const
 {
-   std::lock_guard<std::recursive_mutex> lock(*const_cast<std::recursive_mutex*>(&mSearchResultHighlightingGradientProtector));
-   return mSetting_SearchResultHighlightingGradient.getData();
+    std::lock_guard<std::recursive_mutex> lock(*const_cast<std::recursive_mutex*>(&mSearchResultHighlightingGradientProtector));
+    return mSetting_SearchResultHighlightingGradient.getData();
 }
 
 const tSearchResultColumnsVisibilityMap& CSettingsManager::getSearchResultColumnsVisibilityMap() const
@@ -1707,6 +2040,11 @@ const tSearchResultColumnsVisibilityMap& CSettingsManager::getSearchResultColumn
 const tSearchResultColumnsVisibilityMap& CSettingsManager::getSearchResultColumnsCopyPasteMap() const
 {
     return mSetting_SearchResultColumnsCopyPasteMap.getData();
+}
+
+const tSearchResultColumnsVisibilityMap& CSettingsManager::getSearchResultColumnsSearchMap() const
+{
+    return mSetting_SearchResultColumnsSearchMap.getData();
 }
 
 bool CSettingsManager::getMarkTimeStampWithBold() const
@@ -1790,6 +2128,12 @@ const bool& CSettingsManager::getUML_Autonumber() const
     return mSetting_UML_Autonumber.getData();
 }
 
+const bool& CSettingsManager::getPlotViewFeatureActive() const
+{
+    std::lock_guard<std::recursive_mutex> lock(*const_cast<std::recursive_mutex*>(&mPlotViewFeatureActiveProtector));
+    return mSetting_PlotViewFeatureActive.getData();
+}
+
 const bool& CSettingsManager::getFiltersCompletion_CaseSensitive() const
 {
     return mSetting_FiltersCompletion_CaseSensitive.getData();
@@ -1813,6 +2157,26 @@ const int& CSettingsManager::getFiltersCompletion_CompletionPopUpWidth() const
 const bool& CSettingsManager::getFiltersCompletion_SearchPolicy() const
 {
     return mSetting_FiltersCompletion_SearchPolicy.getData();
+}
+
+const bool& CSettingsManager::getRegexCompletion_CaseSensitive() const
+{
+    return mSetting_RegexCompletion_CaseSensitive.getData();
+}
+
+const bool& CSettingsManager::getRegexCompletion_SearchPolicy() const
+{
+    return mSetting_RegexCompletion_SearchPolicy.getData();
+}
+
+const QString& CSettingsManager::getUsername() const
+{
+    return mSetting_Username.getData();
+}
+
+const int& CSettingsManager::getRegexInputFieldHeight() const
+{
+    return mSetting_RegexInputFieldHeight.getData();
 }
 
 const int& CSettingsManager::getSearchViewLastColumnWidthStrategy() const
@@ -1850,16 +2214,21 @@ const QString& CSettingsManager::getJavaCustomPath() const
     return mSetting_JavaCustomPath.getData();
 }
 
+const bool& CSettingsManager::getGroupedViewFeatureActive() const
+{
+    return mSetting_GroupedViewFeatureActive.getData();
+}
+
 QString CSettingsManager::getRegexDirectory() const
 {
     return sSettingsManager_Directory + QDir::separator() +
            sSettingsManager_Regex_SubDirectory;
 }
 
-QString CSettingsManager::getRegexDirectoryFull() const
+QString CSettingsManager::getRegexUsageStatisticsDirectory() const
 {
     return sSettingsManager_Directory + QDir::separator() +
-           sSettingsManager_Regex_SubDirectory;
+           sSettingsManager_RegexUsageStatistics_SubDirectory;
 }
 
 QString CSettingsManager::getSettingsFilepath() const
@@ -1894,43 +2263,6 @@ void CSettingsManager::refreshRegexConfiguration()
     mSetting_SelectedRegexFile.setData(mSetting_SelectedRegexFile.getData(), true);
 }
 
-void CSettingsManager::clearRegexConfig()
-{
-    mSetting_Aliases.setDataSilent(tAliasItemVec());
-    aliasesChanged(mSetting_Aliases.getData());
-}
-
-CSettingsManager::tOperationResult CSettingsManager::loadRegexConfigCustomPath(const QString &filePath)
-{
-    CSettingsManager::tOperationResult result;
-    result.bResult = false;
-
-    QFile jsonFile(filePath);
-    if(jsonFile.open(QFile::ReadOnly))
-    {
-        auto jsonDoc =  QJsonDocument().fromJson(jsonFile.readAll());
-
-        if( true == jsonDoc.isArray() )
-        {
-            QJsonArray arrayRows = jsonDoc.array();
-
-            for(auto* pSettingItem : mPatternsSettingItemPtrVec)
-            {
-                pSettingItem->readDataFromArray(arrayRows);
-            }
-        }
-
-        result.bResult = true;
-    }
-    else
-    {
-        result.bResult = false;
-        result.err = QString("[%1] Failed to open file - \"%2\"").arg(__FUNCTION__).arg(filePath);
-    }
-
-    return result;
-}
-
 CSettingsManager::tOperationResult CSettingsManager::storeRegexConfigCustomPath(const QString &filePath) const
 {
     CSettingsManager::tOperationResult result;
@@ -1961,7 +2293,115 @@ CSettingsManager::tOperationResult CSettingsManager::storeRegexConfigCustomPath(
     return result;
 }
 
-CSettingsManager::tOperationResult  CSettingsManager::loadSettingsConfig()
+CSettingsManager::tOperationResult CSettingsManager::loadRegexConfigCustomPath(const QString &filePath)
+{
+    CSettingsManager::tOperationResult result;
+    result.bResult = false;
+
+    QFile jsonFile(filePath);
+    if(jsonFile.open(QFile::ReadWrite))
+    {
+        auto jsonDoc =  QJsonDocument().fromJson(jsonFile.readAll());
+
+        if( true == jsonDoc.isArray() )
+        {
+            QJsonArray arrayRows = jsonDoc.array();
+
+            for(auto* pSettingItem : mPatternsSettingItemPtrVec)
+            {
+                pSettingItem->readDataFromArray(arrayRows);
+            }
+        }
+
+        result.bResult = true;
+    }
+    else
+    {
+        result.bResult = false;
+        result.err = QString("[%1] Failed to open file - \"%2\"").arg(__FUNCTION__).arg(filePath);
+    }
+
+    return result;
+}
+
+void CSettingsManager::clearRegexConfig()
+{
+    mSetting_Aliases.setDataSilent(tAliasItemMap());
+    aliasesChanged(mSetting_Aliases.getData());
+}
+
+CSettingsManager::tOperationResult
+CSettingsManager::storeRegexUsageStatisticsDataCustomPath( const QString& filePath ) const
+{
+    CSettingsManager::tOperationResult result;
+    result.bResult = false;
+
+    QFile jsonFile(filePath);
+
+    if(jsonFile.open(QFile::WriteOnly))
+    {
+        QJsonArray settingsArray;
+
+        for(auto* pSettingItem : mRegexUsageStatisticsDataItemPtrVec)
+        {
+            settingsArray.append(pSettingItem->writeData());
+        }
+
+        QJsonDocument jsonDoc( settingsArray );
+        jsonFile.write( jsonDoc.toJson() );
+
+        result.bResult = true;
+    }
+    else
+    {
+        result.bResult = false;
+        result.err = QString("[%1] Failed to open file - \"%2\"").arg(__FUNCTION__).arg(filePath);
+    }
+
+    return result;
+}
+
+
+CSettingsManager::tOperationResult
+CSettingsManager::loadRegexUsageStatisticsDataCustomPath( const QString& filePath )
+{
+    CSettingsManager::tOperationResult result;
+    result.bResult = false;
+
+    QFile jsonFile(filePath);
+
+    if(jsonFile.open(QFile::ReadWrite))
+    {
+        auto jsonDoc =  QJsonDocument().fromJson(jsonFile.readAll());
+
+        if( true == jsonDoc.isArray() )
+        {
+            QJsonArray arrayRows = jsonDoc.array();
+
+            for(auto* pSettingItem : mRegexUsageStatisticsDataItemPtrVec)
+            {
+                pSettingItem->readDataFromArray(arrayRows);
+            }
+        }
+
+        result.bResult = true;
+    }
+    else
+    {
+        result.bResult = false;
+        result.err = QString("[%1] Failed to open file - \"%2\"").arg(__FUNCTION__).arg(filePath);
+    }
+
+    return result;
+}
+
+void CSettingsManager::clearRegexUsageStatisticsData()
+{
+    mSetting_RegexUsageStatistics.setDataSilent(tRegexUsageStatisticsItemMap());
+    regexUsageStatisticsChanged(mSetting_RegexUsageStatistics.getData());
+}
+
+CSettingsManager::tOperationResult CSettingsManager::loadSettingsConfig()
 {
     return loadSettingsConfigCustomPath(getUserSettingsFilepath());
 }
@@ -2017,7 +2457,7 @@ CSettingsManager::tOperationResult CSettingsManager::loadSettingsConfigCustomPat
     result.bResult = false;
 
     QFile jsonFile(filepath);
-    if(jsonFile.open(QFile::ReadOnly))
+    if(jsonFile.open(QFile::ReadWrite))
     {
         auto jsonDoc =  QJsonDocument().fromJson(jsonFile.readAll());
 
@@ -2050,27 +2490,6 @@ CSettingsManager::tOperationResult CSettingsManager::loadSettingsConfigCustomPat
     return result;
 }
 
-// tAliasItem
-CSettingsManager::tAliasItem::tAliasItem():
-    isDefault(false),
-    alias(),
-    regex()
-{}
-
-CSettingsManager::tAliasItem::tAliasItem(bool isDefault_, const QString& alias_, const QString& regex_):
-    isDefault(isDefault_),
-    alias(alias_),
-    regex(regex_)
-{}
-
-// tAliasItem
-bool CSettingsManager::tAliasItem::operator==(const tAliasItem& val) const
-{
-    return isDefault == val.isDefault &&
-            alias == val.alias &&
-            regex == val.regex;
-}
-
 bool CSettingsManager::areAnyDefaultAliasesAvailable() const
 {
     bool bResult = false;
@@ -2097,6 +2516,11 @@ void CSettingsManager::resetSearchResultColumnsVisibilityMap()
 void CSettingsManager::resetSearchResultColumnsCopyPasteMap()
 {
     setSearchResultColumnsCopyPasteMap(sDefaultSearchResultColumnsCopyPasteMap);
+}
+
+void CSettingsManager::resetSearchResultColumnsSearchMap()
+{
+    setSearchResultColumnsSearchMap(sDefaultSearchResultColumnsSearchMap);
 }
 
 void CSettingsManager::resetPatternsColumnsVisibilityMap()

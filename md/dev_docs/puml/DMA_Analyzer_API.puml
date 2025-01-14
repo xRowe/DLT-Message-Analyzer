@@ -69,7 +69,7 @@ class "IFileWrapper"
     + {abstract} virtual bool cacheMsgWrapper( const int& msgId, const tMsgWrapperPtr& pMsgWrapper ) = 0
     + {abstract} virtual bool getSubFilesHandlingStatus() const = 0
     + {abstract} virtual bool isFiltered() const = 0
-    + {abstract} virtual int getMsgRealPos(int msgId) const = 0
+    + {abstract} virtual int getMsgIdFromIndexInMainTable(int msgIdxInMainTable) const = 0
     + {abstract} virtual int getNumberOfFiles() const = 0
     + {abstract} virtual int size() const = 0
     + {abstract} virtual int sizeNonFiltered() const = 0
@@ -105,6 +105,24 @@ package "DMA_Plugin_API" #DDDDDD
 {
 
 class "CDLTMessageAnalyzer"
+{
+}
+
+}
+
+package "DMA_RegexHistory" #DDDDDD
+{
+
+class "CRegexHistoryProvider"
+{
+}
+
+}
+
+package "DMA_RegexHistory_API" #DDDDDD
+{
+
+class "CRegexHistoryComponent"
 {
 }
 
@@ -149,5 +167,7 @@ IDLTMessageAnalyzerControllerConsumer "1" o-- "1" IDLTMessageAnalyzerController 
 IDLTMessageAnalyzerControllerConsumer "1" --> "1" IFileWrapper : uses
 DLTMessageAnalyzerPlugin "1" *-- "1" CAnalyzerComponent : contains
 CDLTMessageAnalyzer "1" --> "1" IDLTMessageAnalyzerController : gets and feeds to IDLTMessageAnalyzerControllerConsumer
+CRegexHistoryProvider "1" o-- "1" IDLTMessageAnalyzerController : uses
+CRegexHistoryComponent "1" --> "1" IDLTMessageAnalyzerController : passes
 
 @enduml

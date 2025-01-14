@@ -10,6 +10,8 @@
 #include "QLineEdit"
 #include "QApplication"
 
+#include "qcustomplot.h"
+
 #include "dltmessageanalyzerplugin.hpp"
 #include "plugin/api/CDLTMessageAnalyzer.hpp"
 #include "components/patternsView/api/CPatternsView.hpp"
@@ -26,6 +28,7 @@
 #include "components/patternsView/api/CPatternsViewComponent.hpp"
 #include "components/filtersView/api/CFiltersViewComponent.hpp"
 #include "components/plant_uml/api/CUMLViewComponent.hpp"
+#include "components/plotView/api/CPlotViewComponent.hpp"
 #include "components/logo/api/CLogoComponent.hpp"
 #include "components/logsWrapper/api/CLogsWrapperComponent.hpp"
 #include "components/settings/api/CSettingsComponent.hpp"
@@ -34,6 +37,13 @@
 #include "components/logsWrapper/api/IMsgWrapper.hpp"
 
 #include "components/filtersView/api/CFiltersView.hpp"
+#include "components/regexHistory/api/CRegexHistoryComponent.hpp"
+
+#include "components/searchView/api/ISearchResultModel.hpp"
+#include "components/groupedView/api/CGroupedView.hpp"
+#include "components/searchView/api/CSearchResultView.hpp"
+#include "components/groupedView/api/IGroupedViewModel.hpp"
+#include "components/coverageNote/api/CCoverageNoteComponent.hpp"
 
 #include "DMA_Plantuml.hpp"
 
@@ -55,7 +65,11 @@ mpFiltersViewComponent(nullptr),
 mpUMLViewComponent(nullptr),
 mpLogoComponent(nullptr),
 mpLogsWrapperComponent(nullptr),
-mpSettingsComponent(nullptr)
+mpRegexHistoryComponent(nullptr),
+mpCoverageNoteComponent(nullptr),
+mpSettingsComponent(nullptr),
+mpAnalyzerComponent(nullptr),
+mDisconnectionTimer()
 #ifndef PLUGIN_API_COMPATIBILITY_MODE_1_0_0
 ,mpMainTableView(nullptr)
 #endif
@@ -65,6 +79,21 @@ mpSettingsComponent(nullptr)
 
     DMA::PlantUML::Creator::getInstance().initialize();
     DMA::PlantUML::Creator::getInstance().setBackgroundColor("#FEFEFE");
+
+    connect(&mDisconnectionTimer, &QTimer::timeout, [this]()
+    {
+        if( mpDLTMessageAnalyzer )
+        {
+            mpDLTMessageAnalyzer->connectionChanged(false);
+            if(nullptr != mpSettingsComponent->getSettingsManager() &&
+                true == mpSettingsComponent->getSettingsManager()->getContinuousSearch())
+            {
+                mpDLTMessageAnalyzer->stop(CDLTMessageAnalyzer::eStopAction::eStopIfNotFinished);
+            }
+        }
+
+        mDisconnectionTimer.stop();
+    });
 }
 
 QString DLTMessageAnalyzerPlugin::name()
@@ -139,6 +168,8 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
     {
         auto pAnalyzerComponent = std::make_shared<CAnalyzerComponent>(mpSettingsComponent->getSettingsManager());
 
+        mpAnalyzerComponent = pAnalyzerComponent;
+
         auto initResult = pAnalyzerComponent->startInit();
 
         if(true == initResult.bIsOperationSuccessful)
@@ -171,8 +202,31 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
     }
 
     {
-        auto pSearchViewComponent = std::make_shared<CSearchViewComponent>(mpForm->getSearchResultTableView(),
-                                                                           mpSettingsComponent->getSettingsManager());
+        auto pCoverageNoteComponent = std::make_shared<CCoverageNoteComponent>(mpSettingsComponent->getSettingsManager(),
+                                                                               mpForm->getCNCommentTextEdit(),
+                                                                               mpForm->getCNItemsTableView(),
+                                                                               mpForm->getCNMessageTextEdit(),
+                                                                               mpForm->getCNRegexTextEdit(),
+                                                                               mpForm->getCNUseRegexButton(),
+                                                                               mpForm->getCNCurrentFileLineEdit(),
+                                                                               mpForm->getFilesLineEdit());
+        mpCoverageNoteComponent = pCoverageNoteComponent;
+
+        auto initResult = pCoverageNoteComponent->startInit();
+
+        if(false == initResult.bIsOperationSuccessful)
+        {
+            SEND_ERR(QString("Failed to initialize %1").arg(pCoverageNoteComponent->getName()));
+        }
+
+        mComponents.push_back(pCoverageNoteComponent);
+    }
+
+    {
+        auto pSearchViewComponent = std::make_shared<CSearchViewComponent>(mpForm->getMainTabWidget(),
+                                                                           mpForm->getSearchResultTableView(),
+                                                                           mpSettingsComponent->getSettingsManager(),
+                                                                           mpCoverageNoteComponent->getCoverageNoteProviderPtr());
         mpSearchViewComponent = pSearchViewComponent;
 
         auto initResult = pSearchViewComponent->startInit();
@@ -248,6 +302,33 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
     }
 
     {
+        auto pPlotViewComponent = std::make_shared<CPlotViewComponent>(mpForm->getCustomPlot(),
+                                                                       mpForm->getCreatePlotButton(),
+                                                                       mpSearchViewComponent->getSearchResultModel(),
+                                                                       mpSettingsComponent->getSettingsManager());
+        mpPlotViewComponent = pPlotViewComponent;
+
+        auto initResult = pPlotViewComponent->startInit();
+
+        if(false == initResult.bIsOperationSuccessful)
+        {
+            SEND_ERR(QString("Failed to initialize %1").arg(pPlotViewComponent->getName()));
+        }
+        else
+        {
+            connect(pPlotViewComponent.get(), &CPlotViewComponent::messageIdSelected, this, [this](const tMsgId& msgId)
+            {
+                if(nullptr != mpDLTMessageAnalyzer)
+                {
+                    mpDLTMessageAnalyzer->jumpInMainTable(msgId);
+                }
+            });
+        }
+
+        mComponents.push_back(pPlotViewComponent);
+    }
+
+    {
         auto pLogoComponent = std::make_shared<CLogoComponent>(mpForm->getLogo());
         mpLogoComponent = pLogoComponent;
 
@@ -275,13 +356,65 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
         mComponents.push_back(pLogsWrapperComponent);
     }
 
-    connect( qApp, &QApplication::aboutToQuit, [this]()
     {
-        if(nullptr != mpSettingsComponent->getSettingsManager())
+        auto pRegexHistoryComponent = std::make_shared<CRegexHistoryComponent>(mpSettingsComponent->getSettingsManager(),
+                                                                               mpForm->getRegexTextEdit(),
+                                                                               mpPatternsViewComponent->getPatternsView(),
+                                                                               mpAnalyzerComponent->getAnalyzerController());
+        mpRegexHistoryComponent = pRegexHistoryComponent;
+
+        auto initResult = pRegexHistoryComponent->startInit();
+
+        if(false == initResult.bIsOperationSuccessful)
         {
-            mpSettingsComponent->getSettingsManager()->storeConfigs();
+            SEND_ERR(QString("Failed to initialize %1").arg(pRegexHistoryComponent->getName()));
         }
 
+        mComponents.push_back(pRegexHistoryComponent);
+    }
+
+    connect(mpGroupedViewComponent->getGroupedView(), &CGroupedView::searchViewHighlightingRequested,
+            this, [this](const tMsgIdSet& msgs)
+    {
+        auto pSearchModel = mpSearchViewComponent->getSearchResultModel();
+        auto* pSearchView = mpSearchViewComponent->getSearchResultView();
+
+        if(false == msgs.empty() &&
+           nullptr != mpSearchViewComponent->getSearchResultModel() &&
+           nullptr != mpSearchViewComponent->getSearchResultView() &&
+           nullptr != mpGroupedViewComponent->getGroupedView())
+        {
+            pSearchModel->setHighlightedRows(msgs);
+            auto jumpRow = pSearchModel->getRowByMsgId(*msgs.begin());
+
+            if(jumpRow >= 0)
+            {
+                pSearchView->clearSelection();
+                pSearchView->selectRow(jumpRow);
+
+                auto selectedRows = pSearchView->selectionModel()->selectedRows();
+
+                if(false == selectedRows.empty())
+                {
+                    pSearchView->scrollTo(selectedRows[0]);
+                }
+
+                if(nullptr != mpForm)
+                {
+                    auto* pMainWidget = mpForm->getMainTabWidget();
+
+                    if(nullptr != pMainWidget)
+                    {
+                        // switch to search view.
+                        pMainWidget->setCurrentIndex(0);
+                    }
+                }
+            }
+        }
+    });
+
+    connect( qApp, &QApplication::aboutToQuit, [this]()
+    {
         for(auto& pComponent : mComponents)
         {
             if(nullptr != pComponent)
@@ -315,14 +448,14 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
 
     if(nullptr != mpForm->getFiltersView())
     {
-        mpForm->getFiltersView()->setRegexInputField(mpForm->getRegexLineEdit());
+        mpForm->getFiltersView()->setRegexInputField(mpForm->getRegexTextEdit());
     }
 
     mpDLTMessageAnalyzer = IDLTMessageAnalyzerControllerConsumer::createInstance<CDLTMessageAnalyzer>(pAnalyzerController,
                                                                                                       mpGroupedViewComponent->getGroupedViewModel(),
                                                                                                       mpForm->getProgresBarLabel(),
                                                                                                       mpForm->getProgresBar(),
-                                                                                                      mpForm->getRegexLineEdit(),
+                                                                                                      mpForm->getRegexTextEdit(),
                                                                                                       mpForm->getErrorLabel(),
                                                                                                       mpPatternsViewComponent->getPatternsView(),
                                                                                                       mpPatternsViewComponent->getPatternsModel(),
@@ -340,12 +473,40 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
                                                                                                       mpSearchViewComponent->getSearchResultView(),
                                                                                                       mpSearchViewComponent->getSearchResultModel(),
                                                                                                       mpLogsWrapperComponent,
-                                                                                                      mpSettingsComponent->getSettingsManager());
+                                                                                                      mpSettingsComponent->getSettingsManager(),
+                                                                                                      mpPlotViewComponent->getPlot(),
+                                                                                                      mpCoverageNoteComponent->getCoverageNoteProviderPtr());
+
+    connect(mpForm->getRegexTextEdit(), &CRegexHistoryTextEdit::returnPressed,
+            this, [this]()
+    {
+        if(nullptr != mpDLTMessageAnalyzer)
+        {
+            if(nullptr != mpForm)
+            {
+                auto pRegexLineEdit = mpForm->getRegexTextEdit();
+                if(nullptr != pRegexLineEdit && false == pRegexLineEdit->getIgnoreReturnKeyEvent() )
+                {
+                    mpDLTMessageAnalyzer->analyze();
+                }
+            }
+        }
+    });
 
 #ifndef PLUGIN_API_COMPATIBILITY_MODE_1_0_0
     if(nullptr != mpDLTMessageAnalyzer)
     {
         mpDLTMessageAnalyzer->setMainTableView(mpMainTableView);
+    }
+
+    if(nullptr != mpForm->getSearchResultTableView())
+    {
+        mpForm->getSearchResultTableView()->setMainTableView(mpMainTableView);
+    }
+
+    if(nullptr != mpCoverageNoteComponent)
+    {
+        mpCoverageNoteComponent->setMainTableView(mpMainTableView);
     }
 #endif
 
@@ -380,6 +541,37 @@ QWidget* DLTMessageAnalyzerPlugin::initViewer()
             if( true == analysisRunning && mpDLTMessageAnalyzer && mpFile )
             {
                 switchFromFileView();
+            }
+
+            if( false == analysisRunning )
+            {
+                auto* pMainWidget = mpForm->getMainTabWidget();
+
+                if(nullptr != pMainWidget)
+                {
+                    const auto currentIndex = pMainWidget->currentIndex();
+                    if(2 == currentIndex)
+                    {
+                        if(mpGroupedViewComponent->getGroupedViewModel())
+                        {
+                            mpGroupedViewComponent->getGroupedViewModel()->sortByCurrentSortingColumn();
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    if(mpCoverageNoteComponent->getCoverageNoteProviderPtr() &&
+       mpSearchViewComponent->getSearchResultView())
+    {
+        connect(mpCoverageNoteComponent->getCoverageNoteProviderPtr().get(),
+                &ICoverageNoteProvider::addCommentFromMainTableRequested,
+                this, [this]()
+        {
+            if(mpSearchViewComponent)
+            {
+                mpSearchViewComponent->getSearchResultView()->addCommentFromMainTable();
             }
         });
     }
@@ -529,23 +721,40 @@ bool DLTMessageAnalyzerPlugin::stateChanged(int, QDltConnection::QDltConnectionS
             }
         }
 
-        if( QDltConnection::QDltConnectionOnline == mConnectionState )
+        switch(mConnectionState)
         {
-            if( mpDLTMessageAnalyzer )
+            case QDltConnection::QDltConnectionOnline:
             {
-               mpDLTMessageAnalyzer->connectionChanged(true);
-            }
-        }
-        else
-        {
             if( mpDLTMessageAnalyzer )
-            {
-               mpDLTMessageAnalyzer->connectionChanged(false);
-               mpDLTMessageAnalyzer->stop(CDLTMessageAnalyzer::eStopAction::eStopIfNotFinished);
+                {
+                    mpDLTMessageAnalyzer->connectionChanged(true);
+                }
+
+                mDisconnectionTimer.stop();
             }
+            break;
+            case QDltConnection::QDltConnectionOffline:
+            {
+                mDisconnectionTimer.start(500);
+            }
+            break;
+            default:
+            {
+                // do nothing
+            }
+            break;
         }
     }
 
+    return true;
+}
+
+bool DLTMessageAnalyzerPlugin::autoscrollStateChanged(bool autoScoll)
+{
+    if( mpDLTMessageAnalyzer )
+    {
+       mpDLTMessageAnalyzer->autoscrollStateChanged(autoScoll);
+    }
     return true;
 }
 
@@ -556,7 +765,7 @@ void DLTMessageAnalyzerPlugin::initMainTableView(QTableView* pMainTableView)
 
     if(nullptr != mpDLTMessageAnalyzer)
     {
-        mpDLTMessageAnalyzer->setMainTableView(pMainTableView);
+        mpDLTMessageAnalyzer->setMainTableView(mpMainTableView);
     }
 }
 
@@ -601,7 +810,7 @@ void DLTMessageAnalyzerPlugin::analyze()
 {
     if( mpDLTMessageAnalyzer && mpForm )
     {
-        if( false == mpForm->getRegexLineEdit()->text().isEmpty() ) // if search string is non-empty
+        if( false == mpForm->getRegexTextEdit()->toPlainText().isEmpty() ) // if search string is non-empty
         {
             bool bRunning = mpDLTMessageAnalyzer->analyze();
 
@@ -768,5 +977,9 @@ PUML_PACKAGE_BEGIN(DMA_Plugin)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CUMLViewComponent, 1, 1, contains)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CLogoComponent, 1, 1, contains)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CLogsWrapperComponent, 1, 1, contains)
+        PUML_COMPOSITION_DEPENDENCY_CHECKED(CPlotViewComponent, 1, 1, contains)
+        PUML_COMPOSITION_DEPENDENCY_CHECKED(CRegexHistoryComponent, 1, 1, contains)
+        PUML_COMPOSITION_DEPENDENCY_CHECKED(CCoverageNoteComponent, 1, 1, contains)
+        PUML_COMPOSITION_DEPENDENCY_CHECKED(QTimer, 1, 1, contains)
     PUML_CLASS_END()
 PUML_PACKAGE_END()

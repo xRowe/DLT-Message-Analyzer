@@ -2,7 +2,28 @@
 
 ----
 
+Table of contents
+
+- [Installation guide](#installation-guide)
+  - [Clone repositories](#clone-repositories)
+  - [Linux console build](#linux-console-build)
+  - [Qt Creator build](#qt-creator-build)
+    - [Qt Creator IDE set up](#qt-creator-ide-set-up)
+    - [qmake *.pro based build](#qmake-pro-based-build)
+    - [Linux and Windows QT creator build](#linux-and-windows-qt-creator-build)
+  - [Run dlt-viewer and enable the plugin](#run-dlt-viewer-and-enable-the-plugin)
+  - [Build dependencies and settings](#build-dependencies-and-settings)
+    - [Build dependencies](#build-dependencies)
+    - [Build settings](#build-settings)
+  - [dlt-viewer-docker](#dlt-viewer-docker)
+  - [Troubleshooting](#troubleshooting)
+    - [CMake 3.28.1](#cmake-3281)
+
+----
+
 # Installation guide
+
+## Clone repositories
 
 - Clone the dlt-viewer project from the **[following location]( https://github.com/GENIVI/dlt-viewer )**.
 
@@ -12,7 +33,7 @@
 
 > **Note!**
 > 
-> Currently plugin can be built against the v2.21.0 release.
+> Currently plugin can be built against the v2.25.0 release.
 >
 > The build under the earlier versions, down to the the v2.19.0 is also supported. But you will need to use the compatibility mode. Such an option is described below later on down this page. Search for the "PLUGIN_INTERFACE_VERSION" keyword.
 >
@@ -44,19 +65,39 @@ Your target path to the plugin should look like **"./dlt-viewer/plugin/DLT-Messa
 
 - Open console in the "./dlt-viewer" folder:
 
-![Screenshot of console](./installation_guide_console.png)
+  ![Screenshot of console](./installation_guide_console.png)
 
 - Run the following set of commands in it:
 
-<pre>mkdir build
-cd build
-cmake ..
-make -j4
-</pre>
+  <pre># Install the 'libqt5svg5-dev' or 'libqt6svg6-dev' dependency
+  sudo DEBIAN_FRONTEND=noninteractive apt-get -yq install libqt5svg5-dev
+  # create build directory
+  mkdir build
+  # Enter the build directory
+  cd build
+  # Run cmake
+  cmake ..
+  # Build the project
+  make -j4
+  # Install dlt-viewer into the system
+  sudo make install .
+  # update the cache for the linker
+  sudo ldconfig
+  </pre>
+
+- Then you can run the dlt-viewer from the following location:
+
+  ```
+  /usr/local/DLTViewer/usr/bin/dlt-viewer
+  ```
 
 ----
 
-### Qt Creator IDE set up
+## Qt Creator build
+
+----
+
+#### Qt Creator IDE set up
 
 - Specify the location of CMake in QT Creator:
 
@@ -67,34 +108,6 @@ Afterward, open the dlt-viewer's CMake project, which is located in the root of 
 ![Screenshot of "Open project" context menu in the Qt Creator](./installation_guide_open_project_menu.png)
 
 ![Screenshot of project file selection in the Qt Creator](./installation_guide_select_project.png)
-
-> **Important note for Windows compilation!**
->
-> In addition to the already mentioned steps, for Windows you will need to modify the dlt-viewer's root CMakeLists.txt.
-> Open the same file, which is mentioned in previous screenshot in the text editor, and add the following 2 lines:
-> 
-> if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC") # new line
->
-> SET(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=gnu99")
->
-> add_definitions( "-Wall" )
->
-> add_definitions( "-Wextra" )
->
-> add_definitions( "-Wno-variadic-macros" )
->
-> add_definitions( "-pedantic" )
->
-> add_definitions( "-Wno-strict-aliasing" )
->
-> endif()                                      # new line
->
-> That will allow you to build plugin with CMake + MSVC + jom, avoiding compilation errors related to misusage of the GCC compiler flags.
->
-> This issue is already raised in dlt-viewer's repo:
-> https://github.com/GENIVI/dlt-viewer/issues/113
->
-> Hopefully it will be fixed soon. Afterward, this step will become obsolete and will be removed from this guide.
 
 ----
 
@@ -108,7 +121,17 @@ Afterward, open the dlt-viewer's CMake project, which is located in the root of 
 
 ----
 
-## qmake *.pro based build
+> **Important note!**
+>
+> Compilation might fail, if you do not have installed libqt5svg5-dev ( for Qt5 ) or libqt6svg6-dev ( for Qt6 ).
+> Those are used by the QCustomPlot dependency, which is used by the DLT-Message-Analyzer.
+>
+> Thus, please, install it before making attempt to build the project:
+> sudo DEBIAN_FRONTEND=noninteractive apt-get -yq install libqt5svg5-dev ( or libqt6svg6-dev )
+
+----
+
+### qmake *.pro based build
 
 Such a build option was dropped.
 DLT-Message-Analyzer has started to use antlr generator, which has only CMake support.
@@ -137,18 +160,18 @@ As of now, they are Linux and Windows.
 
 ----
 
-### Run dlt-viewer and enable the plugin
+## Run dlt-viewer and enable the plugin
 
-- Proceed to the build's artifacts folder and run the dlt-viewer. It should already include and load the dynamic library of the DLT-Message-Analyzer plugin
+- Run the dlt-viewer. It should already include and load the dynamic library of the DLT-Message-Analyzer plugin
 - Enable and show the DLT-Message-Analyzer plugin:
 
 ![Screenshot of enabling the plugin](./installation_guide_enable_plugin.png)
 
 ----
 
-### Build dependencies and settings
+## Build dependencies and settings
 
-#### Build dependencies
+### Build dependencies
 
 > **Note!** 
 > 
@@ -184,7 +207,7 @@ As of now, they are Linux and Windows.
 
 ----
 
-#### Build settings
+### Build settings
 
 > **Note!** 
 > 
@@ -193,7 +216,36 @@ As of now, they are Linux and Windows.
 > sudo apt-get install libqt5serialport5
 > sudo apt-get install libqt5serialport5-dev
 >```
->
+> For Qt6 [__qtserialport__](https://doc.qt.io/qt-6/qtserialport-index.html) module needs to be installed.
+
+----
+
+## dlt-viewer-docker
+
+[sevketcaba](https://github.com/sevketcaba) has developed a useful tool, which allows to build and run dlt-viewer + DMA inside the Docker container. The approach is based on *.sh scripts, so it can be used only for Linux.
+
+The usage is quite simple:
+
+- Clone [this repository](https://github.com/sevketcaba/dlt-viewer-docker)
+- cd to qt5, or qt6, depending on which version of QT you want to use
+- Run ./build.sh in order to build the Docker image
+- Run ./run.sh in order to start the corresponding Docker container and start the dlt-viewer with preinstalled DMA
+
+----
+
+## Troubleshooting
+
+### CMake 3.28.1
+
+It was identified that with version 3.28.1 of the CMake tool, you will get the following error during the DLT Message Analyzer build:
+
+> make[2]: *** No rule to make target 'plugin/DLT-Message-Analyzer/dltmessageanalyzerplugin/src/antlr4_runtime/src/antlr4_runtime/runtime/Cpp/dist/libantlr4-runtime.a', needed by 'plugin/DLT-Message-Analyzer/dltmessageanalyzerplugin/src/CMakeFiles/antlr4_PCRE_static_autogen_timestamp_deps'.  Stop. make[1]: *** [CMakeFiles/Makefile2:1716: plugin/DLT-Message-Analyzer/dltmessageanalyzerplugin/src/CMakeFiles/antlr4_PCRE_static_autogen_timestamp_deps.dir/all] Error 2 make: *** [Makefile:156: all] Error 2
+
+It is likely caused by the bug in that specific version of CMake, combined with the old-style CMake scripting used by the Antlr4 C++ runtime.
+
+As a reliable solution, please switch to the other CMake version. E.g., 3.22.1 and 3.29.6 worked just fine.
+
+You can find more details regarding this issue [here](https://github.com/svlad-90/DLT-Message-Analyzer/issues/203).
 
 ----
 

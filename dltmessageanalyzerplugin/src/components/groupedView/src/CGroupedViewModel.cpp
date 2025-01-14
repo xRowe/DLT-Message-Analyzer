@@ -19,7 +19,7 @@ static const tQStringPtr sRootItemName = std::make_shared<QString>("Root");
 
 CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager,
                                      QObject *parent)
-    : QAbstractItemModel(parent),
+    : IGroupedViewModel(parent),
       CSettingsManagerClient(pSettingsManager),
       mRegex(),
       mSortingColumn(eGroupedViewColumn::Messages),
@@ -29,63 +29,26 @@ CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager
       mFindHandler(),
       mAnalyzedValues()
 {   
-    mSortingHandler = [this](const QVector<tTreeItemPtr>& children,
+    mSortingHandler = [this](QVector<tTreeItemPtr>& children,
                             const int& sortingColumn,
-                            Qt::SortOrder sortingOrder) -> QVector<tTreeItemPtr>
+                            Qt::SortOrder sortingOrder)
     {
-        tTreeItem::tChildrenVector result;
-
         switch(static_cast<eGroupedViewColumn>(sortingColumn))
         {
             case eGroupedViewColumn::SubString:
             {
-                struct tComparator
+                std::sort(children.begin(), children.end(),
+                    [&sortingColumn](const tTreeItemPtr& lVal, const tTreeItemPtr& rVal)
                 {
-                    QString val;
-                    bool operator< (const tComparator& rVal) const
+                    const tQStringPtrWrapper& lValSubString = lVal->data(sortingColumn).get<tQStringPtrWrapper>();
+                    const tQStringPtrWrapper& rValSubString = rVal->data(sortingColumn).get<tQStringPtrWrapper>();
+                    bool bResult = false;
+                    if(nullptr != lValSubString.pString && nullptr != rValSubString.pString)
                     {
-                        return val.compare( rVal.val, Qt::CaseInsensitive ) < 0;
+                        bResult = lValSubString.pString->compare( *rValSubString.pString ) < 0;
                     }
-                };
-
-
-                QMultiMap<tComparator, tTreeItemPtr> sortedChildrenMap;
-
-                for(const auto& pChild : children)
-                {
-                    if(nullptr != pChild)
-                    {
-                        const tQStringPtrWrapper& subString = pChild->data(sortingColumn).get<tQStringPtrWrapper>();
-                        tComparator comparator;
-
-                        if(nullptr != subString.pString)
-                        {
-                            comparator.val = *subString.pString;
-                        }
-
-                        sortedChildrenMap.insert(comparator, pChild);
-                    }
-                }
-
-                for(const auto& pChild : sortedChildrenMap)
-                {
-                    if(nullptr != pChild)
-                    {
-                        switch(sortingOrder)
-                        {
-                            case Qt::SortOrder::AscendingOrder:
-                            {
-                                result.push_back(pChild);
-                            }
-                                break;
-                            case Qt::SortOrder::DescendingOrder:
-                            {
-                                result.push_front(pChild);
-                            }
-                                break;
-                        }
-                    }
-                }
+                    return bResult;
+                });
             }
                 break;
             case eGroupedViewColumn::Messages:
@@ -93,8 +56,6 @@ CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager
             case eGroupedViewColumn::Payload:
             case eGroupedViewColumn::PayloadPerSecondAverage:
             {
-                QMultiMap<int, tTreeItemPtr> sortedChildrenMap;
-
                 for(const auto& pChild : children)
                 {
                     if(nullptr != pChild)
@@ -107,38 +68,21 @@ CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager
                         {
                             updateAverageValues(pChild, false, true);
                         }
-
-                        int statistics = pChild->data(static_cast<int>(sortingColumn)).get<int>();
-                        sortedChildrenMap.insert(statistics, pChild);
                     }
                 }
 
-                for(const auto& pChild : sortedChildrenMap)
+                std::sort(children.begin(), children.end(),
+                [&sortingColumn](const tTreeItemPtr& lVal, const tTreeItemPtr& rVal)
                 {
-                    if(nullptr != pChild)
-                    {
-                        switch(sortingOrder)
-                        {
-                            case Qt::SortOrder::AscendingOrder:
-                            {
-                                result.push_back(pChild);
-                            }
-                                break;
-                            case Qt::SortOrder::DescendingOrder:
-                            {
-                                result.push_front(pChild);
-                            }
-                                break;
-                        }
-                    }
-                }
+                    const auto& lValInt = lVal->data(sortingColumn).get<int>();
+                    const auto& rValInt = rVal->data(sortingColumn).get<int>();
+                    return lValInt < rValInt;
+                });
             }
                 break;
             case eGroupedViewColumn::PayloadPercantage:
             case eGroupedViewColumn::MessagesPercantage:
             {
-                QMultiMap<double, tTreeItemPtr> sortedChildrenMap;
-
                 for(const auto& pChild : children)
                 {
                     if(nullptr != pChild)
@@ -151,31 +95,16 @@ CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager
                         {
                             updatePercentageValues(pChild, false, true);
                         }
-
-                        double statistics = pChild->data(static_cast<int>(sortingColumn)).get<double>();
-                        sortedChildrenMap.insert(statistics, pChild);
                     }
                 }
 
-                for(const auto& pChild : sortedChildrenMap)
+                std::sort(children.begin(), children.end(),
+                [&sortingColumn](const tTreeItemPtr& lVal, const tTreeItemPtr& rVal)
                 {
-                    if(nullptr != pChild)
-                    {
-                        switch(sortingOrder)
-                        {
-                            case Qt::SortOrder::AscendingOrder:
-                            {
-                                result.push_back(pChild);
-                            }
-                                break;
-                            case Qt::SortOrder::DescendingOrder:
-                            {
-                                result.push_front(pChild);
-                            }
-                                break;
-                        }
-                    }
-                }
+                    const auto& lValInt = lVal->data(sortingColumn).get<double>();
+                    const auto& rValInt = rVal->data(sortingColumn).get<double>();
+                    return lValInt < rValInt;
+                });
             }
                 break;
             case eGroupedViewColumn::AfterLastVisible:
@@ -184,7 +113,10 @@ CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager
                 break;
         }
 
-        return result;
+        if( sortingOrder == Qt::SortOrder::DescendingOrder)
+        {
+            std::reverse(children.begin(), children.end());
+        }
     };
 
     mDuplicatesHandler =
@@ -201,14 +133,19 @@ CGroupedViewModel::CGroupedViewModel(const tSettingsManagerPtr& pSettingsManager
                 pItem->getWriteableData(payloadColumn) = pItem->getWriteableData(payloadColumn).get<int>() + dataItems[payloadColumn].get<int>();
             }
 
-            auto metadataColumn = static_cast<int>(eGroupedViewColumn::Metadata);
+            const auto metadataColumn = static_cast<int>(eGroupedViewColumn::Metadata);
 
             //Important to update metadata in item before further usage.
-            pItem->getWriteableData(metadataColumn) = dataItems[metadataColumn];
+            {
+                auto& existingMetadata = pItem->getWriteableData(metadataColumn).get<tGroupedViewMetadata>();
+                const auto& incomingMetadata = dataItems[metadataColumn].get<tGroupedViewMetadata>();
+                existingMetadata.msgId = incomingMetadata.msgId; // it should be the same, actually, as they are duplicated
+                existingMetadata.timeStamp = incomingMetadata.timeStamp;
+            }
 
-            auto metadataVariant = pItem->data(metadataColumn);
+            const auto& metadataVariant = pItem->data(metadataColumn);
 
-            auto metadata = metadataVariant.get<tGroupedViewMetadata>();
+            const auto& metadata = metadataVariant.get<tGroupedViewMetadata>();
             const auto& timeStamp = metadata.timeStamp;
             const auto& msgId = metadata.msgId;
 
@@ -347,7 +284,6 @@ void CGroupedViewModel::updateAverageValues(CTreeItem* pItem, bool updatePayload
 
         if(true == updateMessages)
         {
-
             pItem->getWriteableData(static_cast<int>(eGroupedViewColumn::PayloadPerSecondAverage)) = 0;
         }
     }
@@ -440,7 +376,6 @@ int CGroupedViewModel::rowCount(const QModelIndex &parent) const
 
     if(nullptr != parentItem)
     {
-        parentItem->sort(static_cast<int>(mSortingColumn), mSortOrder, false);
         result = parentItem->childCount();
     }
 
@@ -524,51 +459,100 @@ QVariant CGroupedViewModel::headerData(int section, Qt::Orientation orientation,
     return QVariant();
 }
 
-void CGroupedViewModel::addMatches( const tFoundMatches& matches, bool update )
+void CGroupedViewModel::addMatches( const tGroupedViewIndices& groupedViewIndices,
+                                    const tFoundMatches& matches,
+                                    bool update )
 {
-    if(mpRootItem)
-    {   
-        if(false == matches.empty())
+    if(!groupedViewIndices.empty())
+    {
+        if(mpRootItem)
         {
-            tTreeItem::tDataVec dataVec;
-
+            if(false == matches.foundMatchesVec.empty())
             {
-                CTreeItem::tData data;
-                data.push_back( tQStringPtrWrapper(sRootItemName) ); /*SubString*/
-                data.push_back(tDataItem(1)); /*Messages*/
-                data.push_back(tDataItem(0)); /*MessagesPercantage*/
-                data.push_back(tDataItem(0)); /*MessagesPerSecond*/
-                data.push_back(tDataItem(static_cast<int>(matches[0].msgSizeBytes))); /*Payload*/
-                data.push_back(tDataItem(0)); /*PayloadPercantage*/
-                data.push_back(tDataItem(0)); /*PayloadPerSecondAverage*/
-                data.push_back(tDataItem()); /*AfterLastVisible*/
-                data.push_back(tDataItem(tGroupedViewMetadata(matches[0].timeStamp, matches[0].msgId))); /*Metadata*/
-                dataVec.push_back( data );
+                tTreeItem::tDataVec dataVec;
+                dataVec.reserve(matches.foundMatchesVec.size() + 1);
 
-                mAnalyzedValues.analyzedMessages += 1;
-                mAnalyzedValues.analyzedPayload += matches[0].msgSizeBytes;
-            }
+                {
+                    CTreeItem::tData data;
+                    data.reserve(9);
+                    data.push_back( tQStringPtrWrapper(sRootItemName) ); /*SubString*/
+                    data.push_back(tDataItem(1)); /*Messages*/
+                    data.push_back(tDataItem(0)); /*MessagesPercantage*/
+                    data.push_back(tDataItem(0)); /*MessagesPerSecond*/
+                    data.push_back(tDataItem(static_cast<int>(matches.msgSizeBytes))); /*Payload*/
+                    data.push_back(tDataItem(0)); /*PayloadPercantage*/
+                    data.push_back(tDataItem(0)); /*PayloadPerSecondAverage*/
+                    data.push_back(tDataItem()); /*AfterLastVisible*/
+                    data.push_back(tDataItem(tGroupedViewMetadata(matches.timeStamp, matches.msgId))); /*Metadata*/
+                    dataVec.push_back(data);
 
-            for(const auto& match : matches)
-            {
-                CTreeItem::tData data;
-                data.push_back( tQStringPtrWrapper(match.pMatchStr) ); /*SubString*/
-                data.push_back(tDataItem(1)); /*Messages*/
-                data.push_back(tDataItem(0)); /*MessagesPercantage*/
-                data.push_back(tDataItem(0)); /*MessagesPerSecond*/
-                data.push_back(tDataItem(static_cast<int>(match.msgSizeBytes))); /*Payload*/
-                data.push_back(tDataItem(0)); /*PayloadPercantage*/
-                data.push_back(tDataItem(0)); /*PayloadPerSecondAverage*/
-                data.push_back(tDataItem()); /*AfterLastVisible*/
-                data.push_back(tDataItem(tGroupedViewMetadata(match.timeStamp, match.msgId))); /*Metadata*/
-                dataVec.push_back( data );
-            }
+                    mAnalyzedValues.analyzedMessages += 1;
+                    mAnalyzedValues.analyzedPayload += matches.msgSizeBytes;
+                }
 
-            mpRootItem->addData( dataVec );
+                auto createData = [&matches](const tFoundMatch& match) -> CTreeItem::tData
+                {
+                    CTreeItem::tData data;
+                    data.reserve(9);
+                    data.push_back(match.matchStr); /*SubString*/
+                    data.push_back(tDataItem(1)); /*Messages*/
+                    data.push_back(tDataItem(0)); /*MessagesPercantage*/
+                    data.push_back(tDataItem(0)); /*MessagesPerSecond*/
+                    data.push_back(tDataItem(static_cast<int>(matches.msgSizeBytes))); /*Payload*/
+                    data.push_back(tDataItem(0)); /*PayloadPercantage*/
+                    data.push_back(tDataItem(0)); /*PayloadPerSecondAverage*/
+                    data.push_back(tDataItem()); /*AfterLastVisible*/
+                    data.push_back(tDataItem(tGroupedViewMetadata(matches.timeStamp, matches.msgId))); /*Metadata*/
+                    return data;
+                };
 
-            if(true == update)
-            {
-                updateView();
+                std::map<tGroupedViewIdx, CTreeItem::tData> sortingMap;
+
+                for(const auto& match : matches.foundMatchesVec)
+                {
+                    auto data = createData(match);
+
+                    auto foundIndex = groupedViewIndices.find(match.idx);
+
+                    if(foundIndex != groupedViewIndices.end())
+                    {
+                        sortingMap.insert(std::make_pair(foundIndex->second, std::move(data)));
+                    }
+                }
+
+                for(auto& pair : sortingMap)
+                {
+                    dataVec.emplace_back(std::move(pair.second));
+                }
+
+                auto afterAppendFunction = [](CTreeItem* pItem)
+                {
+                    // if it is a leaf node
+                    if(nullptr != pItem && 0 == pItem->childCount())
+                    {
+                        // we should overtake its msgId into the relatedMsgIds.
+                        const auto metadataColumn = static_cast<int>(eGroupedViewColumn::Metadata);
+                        auto& existingMetadata = pItem->getWriteableData(metadataColumn).get<tGroupedViewMetadata>();
+
+                        if(existingMetadata.relatedMsgIds.index() == existingMetadata.relatedMsgIds.index_of<tMsgIdSet>())
+                        {
+                            existingMetadata.relatedMsgIds.get<tMsgIdSet>().insert(existingMetadata.msgId);
+                        }
+                        else
+                        {
+                            tMsgIdSet msgIdSet;
+                            msgIdSet.insert(existingMetadata.msgId);
+                            existingMetadata.relatedMsgIds = msgIdSet;
+                        }
+                    }
+                };
+
+                mpRootItem->addData( dataVec, afterAppendFunction );
+
+                if(true == update)
+                {
+                    updateView();
+                }
             }
         }
     }
@@ -622,11 +606,11 @@ std::pair<bool /*result*/, QString /*error*/> CGroupedViewModel::exportToHTML(QS
         if(true == bIsAnythingToShow)
         {
             mpRootItem->sort(static_cast<int>(mSortingColumn), mSortOrder, true);
-    
+
             QString& finalText = resultHTML;
-    
+
             QString currentTime = QString().append("[").append(QDateTime::currentDateTime().toString()).append("]");
-    
+
             finalText.append(QString("<!DOCTYPE html>\n"
                              "<html lang=\"en\">\n"
                              "<head>\n"
@@ -671,7 +655,7 @@ std::pair<bool /*result*/, QString /*error*/> CGroupedViewModel::exportToHTML(QS
                              "</style>\n"
                              "</head>\n"
                              "<body>\n");
-    
+
             finalText.append( QString("\n<h2>Trace spam analysis report %1</h2>").arg(currentTime) );
             finalText.append( QString("\n<h3>Analysis based on regex: \"").append(mRegex.toHtmlEscaped()).append("\"</h3>") );
             finalText.append("<ul id=\"myUL\">");
@@ -792,7 +776,7 @@ std::pair<bool /*result*/, QString /*error*/> CGroupedViewModel::exportToHTML(QS
             };
 
             mpRootItem->visit( preVisitFunction, postVisitFunction );
-    
+
             finalText.append("</ul>"
             ""
             "<script>\n"
@@ -837,6 +821,47 @@ void CGroupedViewModel::sort(int column, Qt::SortOrder order)
     }
 
     updateView();
+}
+
+tMsgIdSet CGroupedViewModel::getAllMessageIds(const QModelIndex& index)
+{
+    tMsgIdSet result;
+
+    if(false == index.isValid())
+        return result;
+
+    tTreeItem *pItem = static_cast<tTreeItemPtr>(index.internalPointer());
+
+    if(nullptr != pItem)
+    {
+        pItem->visit([&result](tTreeItemPtr pItem)
+        {
+            if(nullptr != pItem)
+            {
+                const auto metadataColumn = static_cast<int>(eGroupedViewColumn::Metadata);
+                const auto& itemMetadata = pItem->getWriteableData(metadataColumn).get<tGroupedViewMetadata>();
+
+                if(itemMetadata.relatedMsgIds.index() == itemMetadata.relatedMsgIds.index_of<tMsgIdSet>())
+                {
+                    auto& insertSet = itemMetadata.relatedMsgIds.get<tMsgIdSet>();
+                    result.insert(insertSet.begin(), insertSet.end());
+                }
+            }
+
+            return true;
+        },
+        [](const tTreeItemPtr)
+        {
+            return true;
+        });
+    }
+
+    return result;
+}
+
+void CGroupedViewModel::sortByCurrentSortingColumn()
+{
+    sort(static_cast<int>(mSortingColumn), mSortOrder);
 }
 
 PUML_PACKAGE_BEGIN(DMA_GroupedView)

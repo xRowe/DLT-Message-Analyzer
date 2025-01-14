@@ -18,15 +18,7 @@ class "QDltMsg"
 {
 }
 
-class "QDltPlugin"
-{
-}
-
 interface "QDltPluginControlInterface"
-{
-}
-
-class "QDltPluginManager"
 {
 }
 

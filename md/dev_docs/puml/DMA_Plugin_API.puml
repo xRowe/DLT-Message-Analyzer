@@ -3,19 +3,6 @@
 
 skinparam backgroundColor #FEFEFE
 skinparam wrapWidth 600
-package "DLT" #DDDDDD
-{
-
-class "QDltPlugin"
-{
-}
-
-class "QDltPluginManager"
-{
-}
-
-}
-
 package "DMA_Analyzer_API" #DDDDDD
 {
 
@@ -47,6 +34,15 @@ class "CRegexDirectoryMonitor"
 }
 
 class "CTableMemoryJumper"
+{
+}
+
+}
+
+package "DMA_CoverageNote_API" #DDDDDD
+{
+
+class "ICoverageNoteProvider"
 {
 }
 
@@ -119,7 +115,7 @@ class "IFileWrapper"
     + {abstract} virtual bool cacheMsgWrapper( const int& msgId, const tMsgWrapperPtr& pMsgWrapper ) = 0
     + {abstract} virtual bool getSubFilesHandlingStatus() const = 0
     + {abstract} virtual bool isFiltered() const = 0
-    + {abstract} virtual int getMsgRealPos(int msgId) const = 0
+    + {abstract} virtual int getMsgIdFromIndexInMainTable(int msgIdxInMainTable) const = 0
     + {abstract} virtual int getNumberOfFiles() const = 0
     + {abstract} virtual int size() const = 0
     + {abstract} virtual int sizeNonFiltered() const = 0
@@ -202,6 +198,15 @@ class "Ui::Form"
 
 }
 
+package "DMA_RegexHistory_API" #DDDDDD
+{
+
+class "CRegexHistoryTextEdit"
+{
+}
+
+}
+
 package "DMA_SearchView_API" #DDDDDD
 {
 
@@ -214,6 +219,7 @@ class "ISearchResultModel"
     + {abstract} virtual int getFileIdx( const QModelIndex& idx ) const = 0
     + {abstract} virtual std::pair<bool__tIntRange> addNextMessageIdxVec(const tFoundMatchesPack& foundMatchesPack) = 0
     + {abstract} virtual std::pair<int__QString > getUMLDiagramContent() const = 0
+    + {abstract} virtual tPlotContent createPlotContent() const = 0
     + {abstract} virtual void resetData() = 0
     + {abstract} virtual void setFile(const tFileWrapperPtr& pFile) = 0
     + {abstract} virtual void updateView(const int& fromRow = 0) = 0
@@ -256,9 +262,11 @@ CDLTMessageAnalyzer "1" --> "1" CBGColorAnimation : uses
 CDLTMessageAnalyzer "1" o-- "1" CFiltersView : uses
 CDLTMessageAnalyzer "1" o-- "1" CPatternsView : uses
 CDLTMessageAnalyzer "1" *-- "1" CRegexDirectoryMonitor : contains
+CDLTMessageAnalyzer "1" --> "1" CRegexHistoryTextEdit : uses and passes
 CDLTMessageAnalyzer "1" o-- "1" CSearchResultView : uses
 CDLTMessageAnalyzer "1" o-- "1" CTableMemoryJumper : gets and uses
 CDLTMessageAnalyzer "1" o-- "1" CUMLView : uses
+CDLTMessageAnalyzer "1" o-- "1" ICoverageNoteProvider : uses
 CDLTMessageAnalyzer "1" --> "1" IDLTMessageAnalyzerController : gets and feeds to IDLTMessageAnalyzerControllerConsumer
 CDLTMessageAnalyzer "1" o-- "1" IFileWrapper : uses
 CDLTMessageAnalyzer "1" o-- "1" IFiltersModel : uses
@@ -266,8 +274,7 @@ CDLTMessageAnalyzer "1" *-- "1" IGroupedViewModel : uses
 CDLTMessageAnalyzer "1" o-- "1" IPatternsModel : uses
 CDLTMessageAnalyzer "1" o-- "1" ISearchResultModel : gets and uses
 CDLTMessageAnalyzer "1" o-- "1" ISettingsManager : gets and uses
-CDLTMessageAnalyzer "1" o-- "many" QDltPlugin : uses
-CDLTMessageAnalyzer "1" *-- "1" QDltPluginManager : contains
+CDLTMessageAnalyzer "1" o-- "1" QDltMessageDecoder : uses
 Form "1" o-- "1" DLTMessageAnalyzerPlugin : uses
 Form "1" *-- "1" Ui::Form : contains
 Ui::Form "1" *-- "1" CConsoleView : contains
@@ -275,6 +282,7 @@ Ui::Form "1" *-- "1" CFiltersView : contains
 Ui::Form "1" *-- "1" CGroupedView : contains
 Ui::Form "1" *-- "1" CLogo : contains
 Ui::Form "1" *-- "1" CPatternsView : contains
+Ui::Form "1" *-- "1" CRegexHistoryTextEdit : contains
 Ui::Form "1" *-- "1" CSearchResultView : contains
 Ui::Form "1" *-- "1" CUMLView : contains
 

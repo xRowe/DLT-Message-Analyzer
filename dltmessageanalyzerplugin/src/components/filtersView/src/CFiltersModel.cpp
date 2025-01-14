@@ -31,9 +31,9 @@ CFiltersModel::CFiltersModel(const tSettingsManagerPtr& pSettingsManager,
       mCompletionCache(),
       mVarGroupsMap()
 {
-    mSortingHandler = [](const QVector<tTreeItemPtr>& children,
-                            const int& sortingColumn,
-                            Qt::SortOrder sortingOrder) -> QVector<tTreeItemPtr>
+    mSortingHandler = [](QVector<tTreeItemPtr>& children,
+                         const int& sortingColumn,
+                         Qt::SortOrder sortingOrder)
     {
         tTreeItem::tChildrenVector result;
 
@@ -123,11 +123,11 @@ CFiltersModel::CFiltersModel(const tSettingsManagerPtr& pSettingsManager,
                 break;
         }
 
-        return result;
+        children = result;
     };
 
     connect(getSettingsManager().get(), &ISettingsManager::filterVariablesChanged,
-    [this](bool)
+    this, [this](bool)
     {
         filterRegexTokensInternal();
     });
@@ -742,13 +742,16 @@ void CFiltersModel::filterRegexTokensInternal()
 
 void CFiltersModel::addCompletionData( const tFoundMatches& foundMatches )
 {
-    for(const auto& foundMatch : foundMatches)
+    if(false == mVarGroupsMap.empty())
     {
-        auto foundVarGroup = mVarGroupsMap.find(foundMatch.idx);
-
-        if(foundVarGroup != mVarGroupsMap.end())
+        for(const auto& foundMatch : foundMatches.foundMatchesVec)
         {
-            mCompletionCache[foundMatch.idx].insert( tQStringPtrWrapper( foundMatch.pMatchStr ) );
+            auto foundVarGroup = mVarGroupsMap.find(foundMatch.idx);
+
+            if(foundVarGroup != mVarGroupsMap.end())
+            {
+                mCompletionCache[foundMatch.idx].insert( foundMatch.matchStr );
+            }
         }
     }
 }
@@ -771,26 +774,26 @@ QStringList CFiltersModel::getCompletionData( const int& groupIndex,
     {
         int numberOfSuggestions = 0;
 
+        auto caseSensitiveOption = getSettingsManager()->getFiltersCompletion_CaseSensitive() ?
+                    Qt::CaseSensitive :
+                    Qt::CaseInsensitive;
+
         for(const auto& completionItem : foundCompletionSet->second)
         {
-            auto caseSensitiveOption = getSettingsManager()->getFiltersCompletion_CaseSensitive() ?
-                        Qt::CaseSensitive :
-                        Qt::CaseInsensitive;
-
             bool bStringFound = false;
 
             if(false == getSettingsManager()->getFiltersCompletion_SearchPolicy())
             {
-                bStringFound = completionItem.pString->startsWith(input, caseSensitiveOption);
+                bStringFound = completionItem.startsWith(input, caseSensitiveOption);
             }
             else
             {
-                bStringFound = completionItem.pString->contains(input, caseSensitiveOption);
+                bStringFound = completionItem.contains(input, caseSensitiveOption);
             }
 
-            if(completionItem.pString && bStringFound)
+            if(bStringFound)
             {
-                result.push_back(completionItem.pString->mid(0, maxLengthOfSuggestions));
+                result.push_back(completionItem.mid(0, maxLengthOfSuggestions));
                 ++numberOfSuggestions;
             }
 

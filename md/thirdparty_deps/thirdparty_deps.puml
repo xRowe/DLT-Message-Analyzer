@@ -19,6 +19,11 @@ package "DLT_Message_Analyzer Dependencies" {
 
     package "Qt" {
         [qt5]
+        [qt6]
+    }
+
+    package "QCustomPlot" {
+        [qcustomplot]
     }
 
     package "DMA_Family" {
@@ -47,6 +52,10 @@ package "DLT_Message_Analyzer Dependencies" {
         [variant_lite]
     }
 
+    package "json"{
+        [nlohmann/json]
+    }
+
     package "Github_actions"{
         [actions/cache]
         [actions/checkout]
@@ -64,6 +73,8 @@ package "DLT_Message_Analyzer Dependencies" {
 [dlt_message_analyzer_source] --> [dma_plantuml] : https://github.com/svlad-90/DMA_Plantuml
 
 [dlt_message_analyzer_source] --> [qt5] : https://github.com/qt/qt5
+[dlt_message_analyzer_source] --> [qt6] : https://github.com/qt/qtbase
+[dlt_message_analyzer_source] --> [qcustomplot] : https://gitlab.com/DerManu/QCustomPlot
 [dlt_message_analyzer_source] --> [qdlt] : https://github.com/GENIVI/dlt-viewer/tree/master/qdlt
 [dlt_message_analyzer_source] --> [plantuml] : https://github.com/plantuml/plantuml
 [dlt_message_analyzer_source] --> [antlr4] : https://github.com/antlr/antlr4
@@ -77,5 +88,7 @@ package "DLT_Message_Analyzer Dependencies" {
 [dlt_message_analyzer_github] --> [actions/checkout] : https://github.com/actions/checkout
 [dlt_message_analyzer_github] --> [jurplel/install_qt_action] : https://github.com/jurplel/install-qt-action
 [dlt_message_analyzer_github] --> [stefanzweifel/git_auto_commit_action] : https://github.com/stefanzweifel/git-auto-commit-action
+
+[dlt_message_analyzer_github] --> [nlohmann/json] : https://github.com/nlohmann/json
 
 @enduml

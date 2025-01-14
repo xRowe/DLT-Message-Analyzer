@@ -2,6 +2,7 @@
 #include <mutex>
 #include <memory>
 
+#include <QApplication>
 #include <QDateTime>
 #include <QTabBar>
 #include <QThread>
@@ -145,7 +146,9 @@ void CConsoleCtrl::sendMessage( const QString& message,
 CConsoleCtrl::CConsoleCtrl( const tConsoleConfig& consoleConfig ):
 mConsoleConfig(consoleConfig),
 mMessageCounters(),
-mCountedMessageType(eMessageType::eMsg)
+mCountedMessageType(eMessageType::eMsg),
+mBufferedMessages(),
+mFlushBufferedMessagsTimer()
 {
     if(nullptr != mConsoleConfig.pConsoleTextEdit)
     {
@@ -177,7 +180,7 @@ mCountedMessageType(eMessageType::eMsg)
 
                    if(index == indexOfConsoleView)
                    {
-                       pTabBar->setTabTextColor(index, QColor(0,0,0));
+                       pTabBar->setTabTextColor(index, qApp->palette().text().color());
                        pTabBar->setTabText(index, g_TabName());
                        mMessageCounters.clear();
                        mCountedMessageType = eMessageType::eMsg;
@@ -186,18 +189,55 @@ mCountedMessageType(eMessageType::eMsg)
             });
         }
     }
-}
 
-static const QString msgHtml = "<font color=\"Black\">";
-static const QString wrnHtml = "<font color=\"#969600\">";
-static const QString errHtml = "<font color=\"#960000\">";
-static const QString endHtml = "</font>";
-static const QColor msgColor = QColor(0,0,0);
-static const QColor wrnColor = QColor(150,150,0);
-static const QColor errColor = QColor(150,0,0);
+    connect(&mFlushBufferedMessagsTimer, &QTimer::timeout, this, [this]()
+    {
+        if(mConsoleConfig.pConsoleTextEdit)
+        {
+            if(!mBufferedMessages.empty())
+            {
+                QString finalMessage;
+
+                auto sizeCounter = 0;
+
+                for(const auto& message : mBufferedMessages)
+                {
+                    sizeCounter += message.size();
+                }
+
+                finalMessage.reserve(sizeCounter);
+
+                for(const auto& message : mBufferedMessages)
+                {
+                    finalMessage.push_back(message);
+                }
+
+                mConsoleConfig.pConsoleTextEdit->appendHtml(finalMessage);
+
+                mBufferedMessages.clear();
+            }
+        }
+
+        mFlushBufferedMessagsTimer.stop();
+    });
+}
 
 void CConsoleCtrl::addMessage( const QString& message, const tMessageSettings& messageSettings )
 {
+    const QColor textColor = qApp->palette().text().color();
+    QString colorStr = QString("#%1").arg(textColor.rgba(), 8, 16);
+
+    bool isDarkModeOn = isDarkMode();
+    const QString msgHtml = "<font color=\"" + colorStr + "\">";
+    QString wrnStr = isDarkModeOn ? "#fafa00" : "#969600";
+    const QString wrnHtml = "<font color=\"" + wrnStr + "\">";
+    QString errorStr = isDarkModeOn ? "#fa0000" : "#960000";
+    const QString errHtml = "<font color=\"" + errorStr + "\">";
+    const QString endHtml = "</font>";
+    const QColor msgColor = qApp->palette().text().color();
+    const QColor wrnColor = isDarkModeOn ? QColor(250,250,0) : QColor(150,150,0);
+    const QColor errColor = isDarkModeOn ? QColor(250,0,0) : QColor(150,0,0);
+
     if(nullptr != mConsoleConfig.pConsoleTextEdit)
     {
         if(true == messageSettings.clear)
@@ -211,6 +251,7 @@ void CConsoleCtrl::addMessage( const QString& message, const tMessageSettings& m
             messageEscaped.replace("\n", "<br/>");
 
             QString HTMLMessage;
+            HTMLMessage.reserve(messageEscaped.size() + 50);
 
             HTMLMessage.append("<pre>");
 
@@ -248,7 +289,8 @@ void CConsoleCtrl::addMessage( const QString& message, const tMessageSettings& m
 
             HTMLMessage.append("</pre>");
 
-            mConsoleConfig.pConsoleTextEdit->appendHtml(HTMLMessage);
+            mBufferedMessages.push_back(HTMLMessage);
+            mFlushBufferedMessagsTimer.start(100);
         }
 
         if(nullptr != mConsoleConfig.pTabWidget && nullptr != mConsoleConfig.pConsoleTab)

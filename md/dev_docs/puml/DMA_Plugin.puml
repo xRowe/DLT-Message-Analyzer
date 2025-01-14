@@ -29,6 +29,15 @@ class "CAnalyzerComponent"
 
 }
 
+package "DMA_CoverageNote_API" #DDDDDD
+{
+
+class "CCoverageNoteComponent"
+{
+}
+
+}
+
 package "DMA_FiltersView_API" #DDDDDD
 {
 
@@ -92,6 +101,15 @@ class "CUMLViewComponent"
 
 }
 
+package "DMA_PlotView_API" #DDDDDD
+{
+
+class "CPlotViewComponent"
+{
+}
+
+}
+
 package "DMA_Plugin" #DDDDDD
 {
 
@@ -114,6 +132,15 @@ class "Form"
 
 }
 
+package "DMA_RegexHistory_API" #DDDDDD
+{
+
+class "CRegexHistoryComponent"
+{
+}
+
+}
+
 package "DMA_SearchView_API" #DDDDDD
 {
 
@@ -130,6 +157,10 @@ class "QObject"
 {
 }
 
+class "QTimer"
+{
+}
+
 }
 
 '====================Inheritance section====================
@@ -140,6 +171,7 @@ QObject <|-- DLTMessageAnalyzerPlugin : extends
 
 '====================Dependencies section====================
 DLTMessageAnalyzerPlugin "1" *-- "1" CAnalyzerComponent : contains
+DLTMessageAnalyzerPlugin "1" *-- "1" CCoverageNoteComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CDLTMessageAnalyzer : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CFiltersViewComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CGroupedViewComponent : contains
@@ -147,9 +179,12 @@ DLTMessageAnalyzerPlugin "1" *-- "1" CLogComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CLogoComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CLogsWrapperComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CPatternsViewComponent : contains
+DLTMessageAnalyzerPlugin "1" *-- "1" CPlotViewComponent : contains
+DLTMessageAnalyzerPlugin "1" *-- "1" CRegexHistoryComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CSearchViewComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" CUMLViewComponent : contains
 DLTMessageAnalyzerPlugin "1" *-- "1" Form : contains
+DLTMessageAnalyzerPlugin "1" *-- "1" QTimer : contains
 Form "1" o-- "1" DLTMessageAnalyzerPlugin : uses
 
 @enduml

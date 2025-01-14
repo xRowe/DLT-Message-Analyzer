@@ -1,0 +1,119 @@
+name: Build windows Qt6
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Target branch'
+        required: true
+        default: 'master'
+
+jobs:
+  build_windows:
+
+    runs-on: windows-latest
+
+    steps:
+
+    - uses: ilammy/msvc-dev-cmd@v1
+
+    # Creation of the ..\downloads directory
+    - name: Creation of the "..\downloads" directory
+      run: mkdir ..\downloads
+      shell: cmd
+      working-directory: .\
+
+    # Creation of the ..\tools directory
+    - name: Creation of the "..\tools" directory
+      run: mkdir ..\tools
+      shell: cmd
+      working-directory: .\
+
+    # Installation of jom
+    - name: Installation of the jom
+      run: |
+           Invoke-WebRequest http://download.qt.io/official_releases/jom/jom.zip -OutFile ..\downloads\jom.zip
+           Expand-Archive '..\downloads\jom.zip' '..\tools\jom'
+      shell: powershell
+
+    # Add jom to path
+    - name: Add jom to path
+      run: |
+           echo "D:/a/${{ github.event.repository.name }}/tools/jom/" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      shell: powershell
+
+    # Install Java 11
+    - name: Install Java 11
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    # Install cmake version v3.24.x
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v1.14
+      with:
+        cmake-version: 'v3.24.x'
+
+    # Checkout dlt-viewer's revision v2.25.0
+    - name: Checkout of the dlt-viewer
+      uses: actions/checkout@v3
+      with:
+        repository: GENIVI/dlt-viewer
+        ref: v2.25.0
+
+    # Checkout project's revision, which is pushed
+    - name: Checkout of the project
+      uses: actions/checkout@v3
+      with:
+        repository: svlad-90/${{ github.event.repository.name }}
+        path: .\plugin\${{ github.event.repository.name }}
+        ref: ${{ github.ref }}
+
+    # Adjust dlt-viewer's plugin CMakeLists.txt file to sub-include the plugin
+    - name: Patch dlt-viewer's plugin CMakeLists.txt
+      run: Add-Content .\CMakeLists.txt "`nadd_subdirectory(${{ github.event.repository.name }}/dltmessageanalyzerplugin/src)"
+      shell: powershell
+      working-directory: .\plugin
+
+    # Install Qt6
+    - name: Install Qt6
+      uses: jurplel/install-qt-action@v3
+      with:
+         version: 6.5.0
+         target: desktop
+         host: windows
+         dir: ${{ github.workspace }}\Qt6
+         cache: true
+         modules: 'qtserialport'
+
+    # Create build directory
+    - name: Creation of the ".\build" directory
+      run: mkdir ..\build
+      shell: cmd
+      working-directory: .\
+
+    #CMake for dlt-viewer, including the DLT-Message_analyzer plugin
+    - name: CMake
+      run: |
+        cmake ..\${{ github.event.repository.name }}\ "-GCodeBlocks - NMake Makefiles JOM" "-DCMAKE_BUILD_TYPE:STRING=Release" "-DCMAKE_PREFIX_PATH:STRING=${{ github.workspace }}/Qt6/Qt/6.5.0/msvc2019_64" "-DQT_QMAKE_EXECUTABLE:STRING=${{ github.workspace }}/Qt6/Qt/6.5.0/msvc2019_64/bin/qmake.exe"
+      shell: cmd
+      working-directory: ..\build
+
+    #List files in build folder
+    - name: List files in build folder
+      run: |
+        dir
+      shell: cmd
+      working-directory: ..\build
+
+    # Build of the project
+    - name: Jom
+      run: |
+        jom.exe -j8
+      shell: cmd
+      working-directory: ..\build

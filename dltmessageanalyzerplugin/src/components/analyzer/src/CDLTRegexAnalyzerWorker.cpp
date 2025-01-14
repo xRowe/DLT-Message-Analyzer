@@ -42,7 +42,7 @@ mColors()
     qRegisterMetaType<tAnalyzePortionData>("tAnalyzePortionData");
 
     connect( getSettingsManager().get(), &ISettingsManager::searchResultHighlightingGradientChanged,
-             [this]( const tHighlightingGradient& gradient )
+             this, [this]( const tHighlightingGradient& gradient )
     {
         mColors = generateColors(gradient);
     });
@@ -75,6 +75,15 @@ void CDLTRegexAnalyzerWorker::analyzePortion(  const tAnalyzePortionData& analyz
         bAnalyzeUML = true;
     }
 
+    bool bAnalyzePlotView = false;
+
+    if(true == getSettingsManager()->getPlotViewFeatureActive() &&
+        true == analyzePortionData.regexMetadata.doesContainAnyPlotViewGroup() &&
+        true == analyzePortionData.regexMetadata.doesContainConsistentPlotViewData(false, true).first)
+    {
+        bAnalyzePlotView = true;
+    }
+
     ePortionAnalysisState portionAnalysisState = ePortionAnalysisState::ePortionAnalysisState_SUCCESSFUL;
     tFoundMatchesPack foundMatchesPack;
 
@@ -93,22 +102,35 @@ void CDLTRegexAnalyzerWorker::analyzePortion(  const tAnalyzePortionData& analyz
 
             if (true == match.hasMatch())
             {
-                tFoundMatches foundMatches;
+                tFoundMatches foundMatches(processingString.first.msgSize,
+                                           processingString.first.timeStamp,
+                                           processingString.first.msgId);
+
+                int foundMatchesVecCapacity = 0;
 
                 for (int i = 0; i <= match.lastCapturedIndex(); ++i)
                 {
-                    const auto& matchItem = match.captured(i);
-
                     if(i>0)
                     {
-                        if(0 != matchItem.size())
+                        if(0 != match.capturedLength(i))
                         {
-                            foundMatches.push_back( tFoundMatch( std::make_shared<QString>(matchItem),
+                            ++foundMatchesVecCapacity;
+                        }
+                    }
+                }
+
+                foundMatches.foundMatchesVec.reserve(foundMatchesVecCapacity);
+
+                for (int i = 0; i <= match.lastCapturedIndex(); ++i)
+                {
+                    if(i>0)
+                    {
+                        if(0 != match.capturedLength(i))
+                        {
+                            const auto& matchItem = match.captured(i);
+                            foundMatches.foundMatchesVec.emplace_back( tFoundMatch( matchItem,
                                                                  tIntRange( match.capturedStart(i), match.capturedEnd(i) - 1 ),
-                                                                 i,
-                                                                 processingString.first.msgSize,
-                                                                 processingString.first.timeStamp,
-                                                                 processingString.first.msgId)  );
+                                                                 i)  );
                         }
                     }
                 }
@@ -130,7 +152,14 @@ void CDLTRegexAnalyzerWorker::analyzePortion(  const tAnalyzePortionData& analyz
                     }
                 }
 
-                foundMatchesPack.matchedItemVec.push_back( tFoundMatchesPackItem( std::move(itemMetadata), std::move(foundMatches) ) );
+                if(true == bAnalyzePlotView)
+                {
+                    auto updatePlotViewInfoResult = itemMetadata.updatePlotViewInfo(foundMatches,
+                                                                          analyzePortionData.regexMetadata,
+                                                                          pTree);
+                }
+
+                foundMatchesPack.matchedItemVec.push_back( std::make_shared<tFoundMatchesPackItem>( std::move(itemMetadata), std::move(foundMatches) ) );
             }
         }
 

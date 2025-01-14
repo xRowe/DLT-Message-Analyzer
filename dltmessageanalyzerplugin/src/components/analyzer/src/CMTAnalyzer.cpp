@@ -101,7 +101,10 @@ tRequestId CMTAnalyzer::requestAnalyze( const std::weak_ptr<IDLTMessageAnalyzerC
                                       requestParameters.numberOfMessages,
                                       requestParameters.regex,
                                       regexScriptingMetadata,
-                                      requestParameters.numberOfThreads );
+                                      requestParameters.numberOfThreads,
+                                      requestParameters.searchColumns,
+                                      requestParameters.regexStr,
+                                      requestParameters.selectedAliases);
 
             if(0 != requestData.numberOfMessagesToBeAnalyzed)
             {
@@ -167,39 +170,56 @@ bool CMTAnalyzer::regexAnalysisIteration(tRequestMap::iterator& inputIt, const t
             tProcessingStrings processingStrings;
             processingStrings.reserve(chunkSize);
 
+            const auto& searchColumnsMap = qAsConst(inputIt_.value().searchColumns);
+            std::set<eSearchResultColumn> searchColumnsSet;
+
+            for (auto iter = searchColumnsMap.begin(); iter != searchColumnsMap.end(); ++iter)
+            {
+                if(iter.value())
+                {
+                    searchColumnsSet.insert(iter.key());
+                }
+            }
+
             for(int j= 0; j < chunkSize; ++j)
             {
-                auto msgIdxFiltered = startRange + j;
-                auto msgIdx = pFile->getMsgRealPos( msgIdxFiltered );
+                auto msgIdxInMainTable = startRange + j;
+                auto msgIdx = pFile->getMsgIdFromIndexInMainTable( msgIdxInMainTable );
                 auto pMsg = pFile->getMsg(msgIdx);
 
                 if(nullptr != pMsg)
                 {
-                    QString appId = pMsg->getApid();
-                    QString ctId = pMsg->getCtid();
-
-                    auto appIdSize = appId.size();
-                    tIntRange appRange( 0, appIdSize - 1 );
-                    auto ctIdSize = ctId.size();
-                    tIntRange ctRange( appRange.to + 2, appRange.to + 2 + ctIdSize - 1 );
-
-                    QString payloadStr = pMsg->getPayload();
-                    auto payloadSize = payloadStr.size();
-
                     tQStringPtr pStr = std::make_shared<QString>();
-                    pStr->reserve(appId.size() + ctId.size() + payloadStr.size() + 2);
-                    pStr->append( appId ).append(" ").append( ctId ).append(" ").append(payloadStr);
-
-                    tIntRange payloadRange( ctRange.to + 2, ctRange.to + 2 + payloadSize - 1 );
 
                     tFieldRanges fieldRanges;
+                    int rangeCounter = 0;
 
-                    fieldRanges.insert(eSearchResultColumn::Apid, appRange);
-                    fieldRanges.insert(eSearchResultColumn::Ctid, ctRange);
-                    fieldRanges.insert(eSearchResultColumn::Payload, payloadRange);
+                    for (auto iter = searchColumnsSet.begin(); iter != searchColumnsSet.end(); ++iter)
+                    {
+                        int newRangeCounter = rangeCounter;
+
+                        auto pStringData = getDataStrFromMsg(msgIdx, pMsg, *iter);
+
+                        if(nullptr != pStringData)
+                        {
+                            pStr->append(*pStringData);
+                            newRangeCounter += pStringData->size() - 1;
+
+                            if (std::next(iter) != searchColumnsSet.end())
+                            {
+                                pStr->append(" ");
+                                newRangeCounter += 2;
+                            }
+
+                            tIntRange strRange(rangeCounter, rangeCounter + pStringData->size() - 1);
+                            fieldRanges.insert(*iter, strRange);
+
+                            rangeCounter = newRangeCounter;
+                        }
+                    }
 
                     tItemMetadata itemMetadata( msgIdx,
-                                                msgIdxFiltered,
+                                                msgIdxInMainTable,
                                                 fieldRanges,
                                                 pStr->size(),
                                                 pMsg->getSize(),
@@ -211,7 +231,7 @@ bool CMTAnalyzer::regexAnalysisIteration(tRequestMap::iterator& inputIt, const t
                 {
                     qDebug() << "Failed to get msg with idx - " << startRange + j;
                     tItemMetadata itemMetadata( msgIdx,
-                                                msgIdxFiltered,
+                                                msgIdxInMainTable,
                                                 tFieldRanges(),
                                                 0,
                                                 0u,
@@ -357,7 +377,8 @@ void CMTAnalyzer::portionRegexAnalysisFinished( const tPortionRegexAnalysisFinis
                                   requestStatus,
                                   progress,
                                   it->foundMatchesPack,
-                                  portionRegexAnalysisFinishedData.bUML_Req_Res_Ev_DuplicateFound );
+                                  portionRegexAnalysisFinishedData.bUML_Req_Res_Ev_DuplicateFound,
+                                  requestIt->regexScriptingMetadata.getGroupedViewIndices() );
 
                                 QMetaObject::invokeMethod(pClient_, "progressNotification", Qt::QueuedConnection,
                                                           Q_ARG(tProgressNotificationData, progressNotificationData));
@@ -451,7 +472,10 @@ CMTAnalyzer::tRequestData::tRequestData( const std::weak_ptr<IDLTMessageAnalyzer
                                          const int& numberOfMessages_,
                                          const QRegularExpression& regex_,
                                          const tRegexScriptingMetadata& regexScriptingMetadata_,
-                                         const int& numberOfThreads_):
+                                         const int& numberOfThreads_,
+                                         const tSearchResultColumnsVisibilityMap& searchColumns_,
+                                         const QString& regexStr_,
+                                         const QStringList& selectedLiases_):
     pClient(pClient_),
     pFile(pFile_),
     requestedRegexMatches(0),
@@ -460,6 +484,9 @@ CMTAnalyzer::tRequestData::tRequestData( const std::weak_ptr<IDLTMessageAnalyzer
     regex(regex_),
     regexScriptingMetadata(regexScriptingMetadata_),
     numberOfThreads(numberOfThreads_),
+    searchColumns(searchColumns_),
+    regexStr(regexStr_),
+    selectedLiases(selectedLiases_),
     fromMessage(fromMessage_),
     workerThreadCookieCounter(0),
     bUML_Req_Res_Ev_DuplicateFound(false),

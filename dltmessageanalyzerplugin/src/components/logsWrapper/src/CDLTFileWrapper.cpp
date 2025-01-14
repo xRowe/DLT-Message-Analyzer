@@ -149,21 +149,21 @@ QString CDLTFileWrapper::getFileName(int num)
     return result;
 }
 
-int CDLTFileWrapper::getMsgRealPos(int msgId) const
+int CDLTFileWrapper::getMsgIdFromIndexInMainTable(int msgIdxInMainTable) const
 {
     int result = INVALID_MSG_ID;
 
     if(nullptr != mpFile)
     {
-        if(msgId >= 0 && msgId < size())
+        if(msgIdxInMainTable >= 0 && msgIdxInMainTable < size())
         {
             if(true == mpFile->isFilter())
             {
-                result = mpFile->getMsgFilterPos(msgId);
+                result = mpFile->getMsgFilterPos(msgIdxInMainTable);
             }
             else
             {
-                result = msgId;
+                result = msgIdxInMainTable;
             }
         }
     }
@@ -391,6 +391,8 @@ void CDLTFileWrapper::resetCache()
     loadChanged(0);
 
     handleCacheFull(false);
+
+    releaseMemoryToOS();
 }
 
 void CDLTFileWrapper::setMessageDecoder( const tMsgDecoderPtr& pMessageDecoder )
@@ -443,12 +445,12 @@ int CDLTFileWrapper::binarySearch(bool isFrom, const int& fromIdx, const int& to
 
         // If the element is present at the middle
         // itself
-        if (getMsgRealPos(mid) == targetIdx)
+        if (getMsgIdFromIndexInMainTable(mid) == targetIdx)
             return mid;
 
         // If element is smaller than mid, then
         // it can only be present in left subarray
-        if (getMsgRealPos(mid) > targetIdx)
+        if (getMsgIdFromIndexInMainTable(mid) > targetIdx)
             return binarySearch(isFrom, fromIdx, mid - 1, targetIdx);
 
         // Else the element can only be present
@@ -767,6 +769,10 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
 
     QByteArray buf;
     qint64 pos = 0;
+    quint16 last_message_length = 0;
+    quint8 version=1;
+    qint64 lengthOffset=2;
+    qint64 storageLength=0;
 
     /* open file */
     if(false == mInfile.isOpen())
@@ -784,7 +790,39 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
             {
                 /* move behind last found position */
                 const QVector<qint64>* const_indexAll = &(mIndexAll);
-                pos = (*const_indexAll)[mIndexAll.size()-1] + 4;
+                pos = (*const_indexAll)[mIndexAll.size()-1];
+
+                // first move to beginnng of last found message
+                mInfile.seek(pos);
+
+                // read and get file storage length
+                buf = mInfile.read(14);
+                if(((unsigned char)buf.at(3))==2)
+                {
+                    storageLength = 14 + ((unsigned char)buf.at(13));
+                }
+                else
+                {
+                    storageLength = 16;
+                }
+
+                // read and  get last message length
+                mInfile.seek(pos + storageLength);
+                buf = mInfile.read(7);
+                version = (((unsigned char)buf.at(0))&0xe0)>>5;
+                if(version==2)
+                {
+                    lengthOffset = 5;
+                }
+                else
+                {
+                    lengthOffset = 2;  // default
+                }
+                last_message_length = (unsigned char)buf.at(lengthOffset); // was 0
+                last_message_length = (last_message_length<<8 | ((unsigned char)buf.at(lengthOffset+1))) + storageLength; // was 1
+
+                // move just behind the next expected message
+                pos += (last_message_length - 1);
                 mInfile.seek(pos);
             }
             else {
@@ -807,6 +845,7 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
 
             while(true)
             {
+
                 /* read buffer from file */
                 buf = mInfile.read(READ_BUF_SZ);
                 if(buf.isEmpty())
@@ -822,16 +861,37 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
                     if(counter_header>0)
                     {
                         counter_header++;
-                        if (counter_header==16)
+                        if(storageLength==13 && counter_header==13)
+                        {
+                            storageLength += ((unsigned char)cbuf[num]) + 1;
+                        }
+                        else if (counter_header==storageLength)
+                        {
+                            // Read DLT protocol version
+                            version = (((unsigned char)cbuf[num])&0xe0)>>5;
+                            if(version==1)
+                            {
+                                lengthOffset = 2;
+                            }
+                            else if(version==2)
+                            {
+                                lengthOffset = 5;
+                            }
+                            else
+                            {
+                                lengthOffset = 2;  // default
+                            }
+                        }
+                        else if (counter_header==(storageLength+lengthOffset)) // was 16
                         {
                             // Read low byte of message length
-                            message_length = static_cast<unsigned char>(cbuf[num]);
+                            message_length = (unsigned char)cbuf[num];
                         }
-                        else if (counter_header==17)
+                        else if (counter_header==(storageLength+1+lengthOffset)) // was 17
                         {
                             // Read high byte of message length
                             counter_header = 0;
-                            message_length = static_cast<quint16>((message_length<<8 | (static_cast<unsigned char>(cbuf[num]))) + 16);
+                            message_length = (message_length<<8 | ((unsigned char)cbuf[num])) + storageLength;
                             next_message_pos = current_message_pos + message_length;
                             if(next_message_pos==file_size)
                             {
@@ -840,11 +900,11 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
                                 break;
                             }
                             // speed up move directly to next message, if inside current buffer
-                            if((message_length > 20))
+                            if((message_length > storageLength+2+lengthOffset)) // was 20
                             {
-                                if((num+message_length-20<cbuf_sz))
+                                if((num+message_length-(storageLength+2+lengthOffset)<cbuf_sz))  // was 20
                                 {
-                                    num+=message_length-20;
+                                    num+=message_length-(storageLength+2+lengthOffset);  // was 20
                                 }
                             }
                         }
@@ -861,23 +921,27 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
                     {
                         lastFound = 'T';
                     }
-                    else if(lastFound == 'T' && cbuf[num] == 0x01)
+                    else if(lastFound == 'T' && (cbuf[num] == 0x01 || cbuf[num] == 0x02))
                     {
                         if(next_message_pos == 0)
                         {
                             // first message detected or first message after error
                             current_message_pos = pos+num-3;
-                            counter_header = 1;
+                            counter_header = 3;
+                            if(cbuf[num] == 0x01)
+                                storageLength = 16;
+                            else
+                                storageLength = 13;
                             if(current_message_pos!=0)
                             {
                                 // first messages not at beginning or error occured before
                                 errors_in_file++;
                             }
                             // speed up move directly to message length, if inside current buffer
-                            if(num+14<cbuf_sz)
+                            if(num+9<cbuf_sz)
                             {
-                                num+=14;
-                                counter_header+=14;
+                                num+=9;
+                                counter_header+=9;
                             }
                         }
                         else if( next_message_pos == (pos+num-3) )
@@ -885,12 +949,16 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
                             // Add message only when it is in the correct position in relationship to the last message
                             mIndexAll.append(current_message_pos);
                             current_message_pos = pos+num-3;
-                            counter_header = 1;
+                            counter_header = 3;
+                            if(cbuf[num] == 0x01)
+                                storageLength = 16;
+                            else
+                                storageLength = 13;
                             // speed up move directly to message length, if inside current buffer
-                            if(num+14<cbuf_sz)
+                            if(num+9<cbuf_sz)
                             {
-                                num+=14;
-                                counter_header+=14;
+                                num+=9;
+                                counter_header+=9;
                             }
                         }
                         else if(next_message_pos > (pos+num-3))
@@ -920,7 +988,6 @@ bool CDLTFileWrapper::CSubFilesHandler::CDLTFileItem::updateIndex()
             }
 
             mInfile.close();
-
             bResult = true;
         }
     }

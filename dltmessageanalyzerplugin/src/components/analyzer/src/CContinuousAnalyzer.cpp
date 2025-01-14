@@ -80,6 +80,7 @@ void CContinuousAnalyzer::progressNotification( const tProgressNotificationData&
                     if(eRequestState::ERROR_STATE == progressNotificationDataCopy.requestState ||
                             eRequestState::SUCCESSFUL == progressNotificationDataCopy.requestState)
                     {
+                        analysisFinished(foundRequest.key());
                         mRequestDataMap.erase(foundRequest);
                         mSubRequestDataMap.erase(foundSubRequest);
                     }
@@ -89,6 +90,7 @@ void CContinuousAnalyzer::progressNotification( const tProgressNotificationData&
                     if(eRequestState::ERROR_STATE == progressNotificationData.requestState ||
                             eRequestState::SUCCESSFUL == progressNotificationData.requestState)
                     {
+                        analysisFinished(foundRequest.key());
                         mRequestDataMap.erase(foundRequest);
                         mSubRequestDataMap.erase(foundSubRequest);
                     }
@@ -109,7 +111,8 @@ void CContinuousAnalyzer::progressNotification( const tProgressNotificationData&
                             progressNotificationData.requestState,
                             injectedProgress,
                             progressNotificationData.processedMatches,
-                            progressNotificationData.bUML_Req_Res_Ev_DuplicateFound);
+                            progressNotificationData.bUML_Req_Res_Ev_DuplicateFound,
+                            progressNotificationData.groupedViewIndices);
 
                             QMetaObject::invokeMethod(foundRequest.value().pClient.lock().get(), "progressNotification", Qt::QueuedConnection,
                                                       Q_ARG(tProgressNotificationData, resultProgressNotificationData));
@@ -125,7 +128,8 @@ void CContinuousAnalyzer::progressNotification( const tProgressNotificationData&
                             progressNotificationData.requestState,
                             progressNotificationData.progress,
                             progressNotificationData.processedMatches,
-                            progressNotificationData.bUML_Req_Res_Ev_DuplicateFound);
+                            progressNotificationData.bUML_Req_Res_Ev_DuplicateFound,
+                            progressNotificationData.groupedViewIndices);
 
                             QMetaObject::invokeMethod(foundRequest.value().pClient.lock().get(), "progressNotification", Qt::QueuedConnection,
                                                       Q_ARG(tProgressNotificationData, resultProgressNotificationData));
@@ -146,7 +150,8 @@ void CContinuousAnalyzer::progressNotification( const tProgressNotificationData&
                             eRequestState::PROGRESS,
                             100,
                             progressNotificationData.processedMatches,
-                            progressNotificationData.bUML_Req_Res_Ev_DuplicateFound);
+                            progressNotificationData.bUML_Req_Res_Ev_DuplicateFound,
+                            progressNotificationData.groupedViewIndices);
 
                             QMetaObject::invokeMethod(foundRequest.value().pClient.lock().get(), "progressNotification", Qt::QueuedConnection,
                                                       Q_ARG(tProgressNotificationData, resultProgressNotificationData));
@@ -191,12 +196,17 @@ tRequestId CContinuousAnalyzer::requestAnalyze( const std::weak_ptr<IDLTMessageA
                                       requestParameters.pFile,
                                       requestParameters.regex,
                                       requestParameters.numberOfThreads,
-                                      regexScriptingMetadata );
+                                      regexScriptingMetadata,
+                                      requestParameters.searchColumns,
+                                      requestParameters.regexStr,
+                                      requestParameters.selectedAliases);
             requestData.fromMessage = requestParameters.fromMessage;
             requestData.toMessage = requestParameters.fromMessage + requestParameters.numberOfMessages;
 
             mRequestDataMap.insert(resultRequestId, requestData);
             mSubRequestDataMap.insert( subRequestId, resultRequestId );
+
+            analysisStarted(resultRequestId, requestParameters.regexStr, requestParameters.selectedAliases);
         }
     }
 
@@ -223,7 +233,8 @@ void CContinuousAnalyzer::cancelRequest( const std::weak_ptr<IDLTMessageAnalyzer
                 }
             }
 
-             mRequestDataMap.erase(foundRequest);
+            mRequestDataMap.erase(foundRequest);
+            analysisFinished(foundRequest.key());
         }
     }
 }
@@ -261,7 +272,10 @@ void CContinuousAnalyzer::triggerContinuousAnalysisIteration(const tRequestDataM
                     inputIt->toMessage - inputIt->fromMessage,
                     inputIt->regex,
                     inputIt->numberOfThreads,
-                    inputIt->bIsContinuousAnalysis
+                    inputIt->bIsContinuousAnalysis,
+                    inputIt->searchColumns,
+                    inputIt->regexStr,
+                    inputIt->selectedAlises
                 );
 
                 tRequestId subRequestId = mpSubAnalyzer->requestAnalyze(mpSubConsumer,
@@ -283,7 +297,8 @@ void CContinuousAnalyzer::triggerContinuousAnalysisIteration(const tRequestDataM
                             eRequestState::ERROR_STATE,
                             0,
                             tFoundMatchesPack(),
-                            false
+                            false,
+                            tGroupedViewIndices()
                         );
 
                         inputIt.value().pClient.lock()->progressNotification(progressNotificationData);
@@ -318,7 +333,8 @@ void CContinuousAnalyzer::triggerContinuousAnalysisIteration(const tRequestDataM
                     eRequestState::ERROR_STATE,
                     0,
                     tFoundMatchesPack(),
-                    false
+                    false,
+                    tGroupedViewIndices()
                 );
 
                 inputIt.value().pClient.lock()->progressNotification(progressNotificationData);
@@ -337,7 +353,10 @@ CContinuousAnalyzer::tRequestData::tRequestData(const tRequestId& requestId_,
             const tFileWrapperPtr& pFile,
             const QRegularExpression& regex_,
             const int& numberOfThreads_,
-            const tRegexScriptingMetadata& regexScriptingMetadata_): requestId(requestId_),
+            const tRegexScriptingMetadata& regexScriptingMetadata_,
+            const tSearchResultColumnsVisibilityMap& searchColumns_,
+            const QString& regexStr_,
+            const QStringList& selectedAlises_): requestId(requestId_),
             pClient(pClient_),
             subRequestId(subRequestId_),
             bIsContinuousAnalysis(bIsContinuousAnalysis_),
@@ -347,7 +366,10 @@ CContinuousAnalyzer::tRequestData::tRequestData(const tRequestId& requestId_,
             regex(regex_),
             regexScriptingMetadata(regexScriptingMetadata_),
             numberOfThreads(numberOfThreads_),
-            bContinuousModeActive(false)
+            bContinuousModeActive(false),
+            searchColumns(searchColumns_),
+            regexStr(regexStr_),
+            selectedAlises(selectedAlises_)
 {}
 
 PUML_PACKAGE_BEGIN(DMA_Analyzer)

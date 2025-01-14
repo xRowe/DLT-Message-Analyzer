@@ -45,7 +45,6 @@ protected:
         //SEND_MSG(QString("%1").arg(__FUNCTION__));
         tParent::focusInEvent(event);
 
-        //disconnect(completer(), SIGNAL(QCompleter::activated(QString)), this, SLOT(QLineEdit::setText));
         if(nullptr != completer())
         {
             //SEND_MSG(QString("%1 completer not nullptr").arg(__FUNCTION__));
@@ -168,7 +167,7 @@ void CFilterItemDelegate::updateSuggestions(const QString& input)
 
             if(true == parentIndex.isValid()) //if parent index is valid
             {
-                if(1 == mpModel->rowCount(parentIndex)) // if parent haas only 1 child
+                if(1 == mpModel->rowCount(parentIndex)) // if parent has only 1 child
                 {
                     auto parentRowType = parentIndex.sibling(parentIndex.row(), static_cast<int>(eRegexFiltersColumn::RowType)).data().value<eRegexFiltersRowType>();
 
@@ -375,24 +374,24 @@ QColor CFilterItemDelegate::getColor( const QModelIndex& index ) const
             {
                 if(parentRowType == eRegexFiltersRowType::VarGroup)
                 {
-                    result = QColor("#F9F871");
+                    result = isDarkMode() ? QColor("#2623d9") : QColor("#F9F871");
                 }
                 else
                 {
-                    result = QColor("#B3A7B8");
+                    result = isDarkMode() ? QColor("#48454a") : QColor("#d6d6d6");
                 }
             }
             else
             {
-                result = QColor("#B3A7B8");
+                result = isDarkMode() ? QColor("#48454a") : QColor("#d6d6d6");
             }
         }
             break;
         case eRegexFiltersRowType::VarGroup:
-        result = QColor("#FFC04A");
+        result = isDarkMode() ? QColor("#7325b3") : QColor("#FFC04A");
             break;
         case eRegexFiltersRowType::NonVarGroup:
-        result = QColor("#B3A7B8");
+        result = isDarkMode() ? QColor("#48454a") : QColor("#d6d6d6");
             break;
     }
 

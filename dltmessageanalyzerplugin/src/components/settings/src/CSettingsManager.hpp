@@ -30,13 +30,14 @@ public:
     bool areAnyDefaultAliasesAvailable() const override;
     void resetSearchResultColumnsVisibilityMap() override;
     void resetSearchResultColumnsCopyPasteMap() override;
+    void resetSearchResultColumnsSearchMap() override;
     void resetPatternsColumnsVisibilityMap() override;
     void resetPatternsColumnsCopyPasteMap() override;
     void resetRegexFiltersColumnsVisibilityMap() override;
     void resetGroupedViewColumnsVisibilityMap() override;
     void resetGroupedViewColumnsCopyPasteMap() override;
     QString getRegexDirectory() const override;
-    QString getRegexDirectoryFull() const override;
+    QString getRegexUsageStatisticsDirectory() const override;
     QString getSettingsFilepath() const override;
     QString getUserSettingsFilepath() const override;
     QString getRootSettingsFilepath() const override;
@@ -50,8 +51,11 @@ public:
     void setSettingsManagerVersion(const tSettingsManagerVersion& val) override;
 
     // regex settings
-    void setAliases(const tAliasItemVec& val) override;
+    void setAliases(const tAliasItemMap& val) override;
     void setAliasIsDefault(const QString& alias, bool isDefault) override;
+
+    // regex usage statistics
+    virtual void setRegexUsageStatistics(const tRegexUsageStatisticsItemMap& val) override;
 
     // general settings
     void setNumberOfThreads(const int& val) override;
@@ -70,6 +74,7 @@ public:
     void setSearchResultHighlightingGradient(const tHighlightingGradient& val) override;
     void setSearchResultColumnsVisibilityMap(const tSearchResultColumnsVisibilityMap& val) override;
     void setSearchResultColumnsCopyPasteMap(const tSearchResultColumnsVisibilityMap& val) override;
+    void setSearchResultColumnsSearchMap(const tSearchResultColumnsVisibilityMap& val) override;
     void setMarkTimeStampWithBold(bool val) override;
     void setPatternsColumnsVisibilityMap(const tPatternsColumnsVisibilityMap& val) override;
     void setPatternsColumnsCopyPasteMap(const tPatternsColumnsVisibilityMap& val) override;
@@ -86,6 +91,7 @@ public:
     void setUML_ShowArguments(const bool& val) override;
     void setUML_WrapOutput(const bool& val) override;
     void setUML_Autonumber(const bool& val) override;
+    void setPlotViewFeatureActive(const bool& val) override;
     void setFiltersCompletion_CaseSensitive(const bool& val) override;
     void setFiltersCompletion_MaxNumberOfSuggestions(const int& val) override;
     void setFiltersCompletion_MaxCharactersInSuggestion(const int& val) override;
@@ -98,6 +104,11 @@ public:
     void setJavaPathMode(const int& val) override;
     void setJavaPathEnvVar(const QString& val) override;
     void setJavaCustomPath(const QString& val) override;
+    void setGroupedViewFeatureActive(bool val) override;
+    void setRegexCompletion_CaseSensitive(const bool& val) override;
+    void setRegexCompletion_SearchPolicy(const bool& val) override;
+    void setUserName(const QString& val) override;
+    void setRegexInputFieldHeight(const int& linesNumber) override;
 
     void setSelectedRegexFile(const QString& val) override;
 
@@ -107,7 +118,10 @@ public:
     const tSettingsManagerVersion& getSettingsManagerVersion() const override;
 
     // regex settings
-    const tAliasItemVec& getAliases() const override;
+    const tAliasItemMap& getAliases() const override;
+
+    // regex usage statistics
+    const tRegexUsageStatisticsItemMap& getRegexUsageStatistics() const override;
 
     // general settings
     const int& getNumberOfThreads() const override;
@@ -126,6 +140,7 @@ public:
     tHighlightingGradient getSearchResultHighlightingGradient() const override;
     const tSearchResultColumnsVisibilityMap& getSearchResultColumnsVisibilityMap() const override;
     const tSearchResultColumnsVisibilityMap& getSearchResultColumnsCopyPasteMap() const override;
+    const tSearchResultColumnsVisibilityMap& getSearchResultColumnsSearchMap() const override;
     bool getMarkTimeStampWithBold() const override;
     const tPatternsColumnsVisibilityMap& getPatternsColumnsVisibilityMap() const override;
     const tPatternsColumnsVisibilityMap& getPatternsColumnsCopyPasteMap() const override;
@@ -143,6 +158,7 @@ public:
     const bool& getUML_ShowArguments() const override;
     const bool& getUML_WrapOutput() const override;
     const bool& getUML_Autonumber() const override;
+    const bool& getPlotViewFeatureActive() const override;
     const bool& getFiltersCompletion_CaseSensitive() const override;
     const int& getFiltersCompletion_MaxNumberOfSuggestions() const override;
     const int& getFiltersCompletion_MaxCharactersInSuggestion() const override;
@@ -155,6 +171,11 @@ public:
     const int& getJavaPathMode() const override;
     const QString& getJavaPathEnvVar() const override;
     const QString& getJavaCustomPath() const override;
+    const bool& getGroupedViewFeatureActive() const override;
+    const bool& getRegexCompletion_CaseSensitive() const override;
+    const bool& getRegexCompletion_SearchPolicy() const override;
+    const QString& getUsername() const override;
+    const int& getRegexInputFieldHeight() const override;
 
     // allowed ranges
     const TRangedSettingItem<int>::tOptionalAllowedRange& getSetting_NumberOfThreads_AllowedRange() const override;
@@ -176,10 +197,18 @@ private: // methods
     tOperationResult backwardCompatibility();
 
     /**
-     * @brief backwardCompatibility_V0_V1 - function, which handles backward compatibility between V0 and V1 of settings manager
+     * @brief backwardCompatibility_V0_V1 - function,
+     * which handles backward compatibility between V0 and V1 of settings manager
      * @return - result of the operation
      */
     tOperationResult backwardCompatibility_V0_V1();
+
+    /**
+     * @brief backwardCompatibility_V1_V2 - function,
+     * which handles backward compatibility between V1 and V2 of settings manager
+     * @return - result of the operation
+     */
+    tOperationResult backwardCompatibility_V1_V2();
 
     ////////////////ROOT_CONFIG//////////////////////////////////////////////
 
@@ -240,8 +269,32 @@ private: // methods
 
     /**
      * @brief clearRegexConfig - clears regex configuration
+     * that is stored in the RAM
      */
     void clearRegexConfig();
+
+    ////////////////REGEX_COMPLETION_DATA/////////////////////////////////////
+
+    /**
+     * @brief storeRegexUsageStatisticsDataCustomPath - stores regex
+     * usage statistics to a specified config file
+     * @return - result of the operation
+     */
+    tOperationResult storeRegexUsageStatisticsDataCustomPath( const QString& filePath ) const;
+
+    /**
+     * @brief loadaRegexUsageStatisticsDataCustomPath - loads regex
+     * usage statistics from a specified config file
+     * @param filePath - path to a file with configuration
+     * @return - result of the operation
+     */
+    tOperationResult loadRegexUsageStatisticsDataCustomPath( const QString& filePath );
+
+    /**
+     * @brief clearRegexUsageStatisticsData - clears regex usage
+     * statistics that is stored in the RAM
+     */
+    void clearRegexUsageStatisticsData();
 
 private: // methods
 
@@ -272,10 +325,15 @@ private: // methods
                                                  const TSettingItem<tHighlightingGradient>::tUpdateSettingsFileFunc& updateFileFunc,
                                                  const tHighlightingGradient& defaultValue) const;
 
-    TSettingItem<tAliasItemVec> createAliasItemVecSettingsItem(const QString& key,
-                                                 const TSettingItem<tAliasItemVec>::tUpdateDataFunc& updateDataFunc,
-                                                 const TSettingItem<tAliasItemVec>::tUpdateSettingsFileFunc& updateFileFunc,
-                                                 const tAliasItemVec& defaultValue) const;
+    TSettingItem<tAliasItemMap> createAliasItemMapSettingsItem(const QString& key,
+                                                 const TSettingItem<tAliasItemMap>::tUpdateDataFunc& updateDataFunc,
+                                                 const TSettingItem<tAliasItemMap>::tUpdateSettingsFileFunc& updateFileFunc,
+                                                 const tAliasItemMap& defaultValue) const;
+
+    TSettingItem<tRegexUsageStatisticsItemMap> createRegexUsageStatisticsItemMapSettingsItem(const QString& key,
+                                                 const TSettingItem<tRegexUsageStatisticsItemMap>::tUpdateDataFunc& updateDataFunc,
+                                                 const TSettingItem<tRegexUsageStatisticsItemMap>::tUpdateSettingsFileFunc& updateFileFunc,
+                                                 const tRegexUsageStatisticsItemMap& defaultValue) const;
 
     TSettingItem<tSearchResultColumnsVisibilityMap> createSearchResultColumnsVisibilityMapSettingsItem(const QString& key,
                                                  const TSettingItem<tSearchResultColumnsVisibilityMap>::tUpdateDataFunc& updateDataFunc,
@@ -384,7 +442,7 @@ private: // methods
 private: // fields
 
     TSettingItem<tSettingsManagerVersion> mSetting_SettingsManagerVersion;
-    TSettingItem<tAliasItemVec> mSetting_Aliases;
+    TSettingItem<tAliasItemMap> mSetting_Aliases;
     TRangedSettingItem<int> mSetting_NumberOfThreads;
     TSettingItem<bool> mSetting_ContinuousSearch;
     TSettingItem<bool> mSetting_CopySearchResultAsHTML;
@@ -403,6 +461,7 @@ private: // fields
 
     TSettingItem<tSearchResultColumnsVisibilityMap> mSetting_SearchResultColumnsVisibilityMap;
     TSettingItem<tSearchResultColumnsVisibilityMap> mSetting_SearchResultColumnsCopyPasteMap;
+    TSettingItem<tSearchResultColumnsVisibilityMap> mSetting_SearchResultColumnsSearchMap;
     TSettingItem<bool> mSetting_MarkTimeStampWithBold;
     TSettingItem<tPatternsColumnsVisibilityMap> mSetting_PatternsColumnsVisibilityMap;
     TSettingItem<tPatternsColumnsVisibilityMap> mSetting_PatternsColumnsCopyPasteMap;
@@ -425,12 +484,20 @@ private: // fields
     TSettingItem<bool> mSetting_UML_WrapOutput;
     TSettingItem<bool> mSetting_UML_Autonumber;
 
+    // Plot view settings
+    std::recursive_mutex mPlotViewFeatureActiveProtector;
+    TSettingItem<bool> mSetting_PlotViewFeatureActive;
+
     // Filters view completion settings
     TSettingItem<bool> mSetting_FiltersCompletion_CaseSensitive;
     TRangedSettingItem<int> mSetting_FiltersCompletion_MaxNumberOfSuggestions;
     TRangedSettingItem<int> mSetting_FiltersCompletion_MaxCharactersInSuggestion;
     TRangedSettingItem<int> mSetting_FiltersCompletion_CompletionPopUpWidth;
     TSettingItem<bool> mSetting_FiltersCompletion_SearchPolicy; // 0 - startWith; 1 - contains
+
+    // Regex completion settings
+    TSettingItem<bool> mSetting_RegexCompletion_CaseSensitive;
+    TSettingItem<bool> mSetting_RegexCompletion_SearchPolicy; // 0 - startWith; 1 - contains
 
     TRangedSettingItem<int> mSetting_SearchViewLastColumnWidthStrategy;
 
@@ -444,12 +511,22 @@ private: // fields
     TSettingItem<QString> mSetting_JavaPathEnvVar;
     TSettingItem<QString> mSetting_JavaCustomPath;
 
+    // Grouped view settings
+    TSettingItem<bool> mSetting_GroupedViewFeatureActive;
+
+    // Regex usage statistics
+    TSettingItem<tRegexUsageStatisticsItemMap> mSetting_RegexUsageStatistics;
+
+    TSettingItem<QString> mSetting_Username;
+    TSettingItem<int> mSetting_RegexInputFieldHeight;
+
     typedef ISettingItem* tSettingItemPtr;
     typedef std::vector<tSettingItemPtr> tSettingItemsPtrVec;
 
     tSettingItemsPtrVec mRootSettingItemPtrVec;
     tSettingItemsPtrVec mUserSettingItemPtrVec;
     tSettingItemsPtrVec mPatternsSettingItemPtrVec;
+    tSettingItemsPtrVec mRegexUsageStatisticsDataItemPtrVec;
 
-    bool mbRootConfigInitialised;
+    bool mbInitialised;
 };

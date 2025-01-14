@@ -9,6 +9,7 @@
 #include "common/Definitions.hpp"
 
 #include "components/settings/api/CSettingsManagerClient.hpp"
+#include "components/coverageNote/api/ICoverageNoteProvider.hpp"
 
 class CSearchResultModel;
 
@@ -25,8 +26,12 @@ public:
     void setFile( const tFileWrapperPtr& pFile );
     virtual void setModel(QAbstractItemModel *model) override;
     void copySelectionToClipboard( bool copyAsHTML, bool copyOnlyPayload ) const;
-    void newSearchStarted();
+    void newSearchStarted(const QString& regex);
     void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override;
+    void setCoverageNoteProvider(const tCoverageNoteProviderPtr& pCoverageNoteProvider);
+    void setMainTabWidget(QTabWidget* pTabWidget);
+    void setMainTableView(QTableView* pMainTableView);
+    void addCommentFromMainTable();
 
 signals:
     void searchRangeChanged( const tIntRangeProperty& searchRange, bool bReset );
@@ -41,15 +46,18 @@ protected:
     virtual void keyPressEvent ( QKeyEvent * event ) override;
 
     void handleSettingsManagerChange() override;
+    QString getSelectionAsString( bool copyAsHTML, bool copyOnlyPayload ) const;
+    QString getMainTableSelectionAsString() const;
 
 private:
     bool isVerticalScrollBarVisible() const;
     void updateColumnsVisibility();
     void getUserSearchRange();
     void copyMessageFiles();
-    void switchToNextUMLItem(bool bNext);
-    void selectAllUMLItems(bool select);
+    void switchToNextCheckboxItem(bool bNext, int column);
+    void selectAllCheckboxItems(bool select, int column);
     void updateWidthLogic(const int& rowFrom, const int& rowTo);
+    void addComment();
 
     typedef std::set<eSearchResultColumn> tUpdateWidthSet;
 
@@ -57,6 +65,15 @@ private:
     void forceUpdateWidthAndResetContentMap();
 
     eSearchResultColumn getLastVisibleColumn() const;
+    void clearGroupedViewHighlighting();
+
+    enum class eDirection
+    {
+        Next = 0,
+        Previous
+    };
+
+    void jumpToGroupedViewHighlightingMessage(eDirection direction);
 
 private:
 
@@ -69,4 +86,8 @@ private:
 
     typedef std::map<eSearchResultColumn, int /*max size of content*/> tContentSizeMap;
     tContentSizeMap mContentSizeMap;
+    tCoverageNoteProviderPtr mpCoverageNoteProvider;
+    QTabWidget* mpMainTabWidget;
+    QString mUsedRegex;
+    QTableView* mpMainTableView;
 };

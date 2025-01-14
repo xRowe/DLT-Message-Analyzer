@@ -24,6 +24,7 @@
 #include "common/Definitions.hpp"
 #include "components/analyzer/api/IDLTMessageAnalyzerControllerConsumer.hpp"
 #include "components/settings/api/CSettingsManagerClient.hpp"
+#include "components/coverageNote/api/ICoverageNoteProvider.hpp"
 
 #include "QElapsedTimer"
 
@@ -43,6 +44,8 @@ class CUMLView;
 class CSearchResultView;
 class ISearchResultModel;
 class CTableMemoryJumper;
+class CCustomPlotExtended;
+class CRegexHistoryTextEdit;
 
 /**
  * @brief The CDLTMessageAnalyzer class - used as a main controller of the plugin.
@@ -57,7 +60,7 @@ class CDLTMessageAnalyzer : public IDLTMessageAnalyzerControllerConsumer,
 
         CDLTMessageAnalyzer(const std::weak_ptr<IDLTMessageAnalyzerController>& pController,
                             const tGroupedViewModelPtr& pGroupedViewModel,
-                            QLabel* pProgressBarLabel, QProgressBar* pProgressBar, QLineEdit* regexLineEdit,
+                            QLabel* pProgressBarLabel, QProgressBar* pProgressBar, CRegexHistoryTextEdit* pRegexLineEdit,
                             QLabel* pLabel, CPatternsView* pPatternsTableView, const tPatternsModelPtr& pPatternsModel,
                             QComboBox* pNumberOfThreadsCombobBox,
                             QCheckBox* pContinuousSearchCheckBox,
@@ -70,7 +73,9 @@ class CDLTMessageAnalyzer : public IDLTMessageAnalyzerControllerConsumer,
                             CSearchResultView* pSearchResultView,
                             const std::shared_ptr<ISearchResultModel>& pSearchResultModel,
                             const std::weak_ptr<IDLTLogsWrapperCreator>& pDLTLogsWrapperCreator,
-                            const tSettingsManagerPtr& pSettingsManager);
+                            const tSettingsManagerPtr& pSettingsManager,
+                            CCustomPlotExtended* pCustomPlotExtended,
+                            const tCoverageNoteProviderPtr& pCoverageNoteProvider);
 
         /**
          * @brief setFile - set's the file to be used for analysis
@@ -99,11 +104,12 @@ class CDLTMessageAnalyzer : public IDLTMessageAnalyzerControllerConsumer,
 
         /**
          * @brief analyze - starts analysis
-         * @return - trye in case of successful start of analysis.
+         * @param pSelectedAliases - collection of aliases that were selected for search.
+         * @return - true in case of successful start of analysis.
          * False otherwise.
          * Note! This call will stop previous search, is one is already running.
          */
-        bool analyze();
+        bool analyze(const QStringList* pSelectedAliases = nullptr);
 
         /**
          * @brief cancel - cancels analysis, if one is running.
@@ -139,7 +145,8 @@ class CDLTMessageAnalyzer : public IDLTMessageAnalyzerControllerConsumer,
 
         /**
          * @brief searchView_clicked_jumpTo_inMainTable - scrolls main table of dlt-viewer to a specified index
-         * @param index - index to jump to.
+         * @param index - index to jump to
+         * @param setFocus - whether to set focus to the main table
          */
         void searchView_clicked_jumpTo_inMainTable(const QModelIndex &index);
 
@@ -198,6 +205,12 @@ class CDLTMessageAnalyzer : public IDLTMessageAnalyzerControllerConsumer,
         void connectionChanged(bool connected);
 
         /**
+        * @brief autoscrollStateChanged - notifies this controller, that autoscroll state has changed.
+        * @param state - autoscroll state.
+        */
+        void autoscrollStateChanged(bool state);
+
+        /**
          * @brief decodeMsg - allows to decode the message.
          * @param msg - message to be decoded.
          */
@@ -207,6 +220,12 @@ class CDLTMessageAnalyzer : public IDLTMessageAnalyzerControllerConsumer,
          * @brief createSequenceDiagram - trigger to create a sequence diagram
          */
         void createSequenceDiagram() const;
+
+        /**
+         * @brief jumpInMainTable - jumps in main dlt viewer table to a selected msg id
+         * @param msgId - msg id to jump to
+         */
+        void jumpInMainTable(const tMsgId& msgId);
 
 signals:
         /**
@@ -237,6 +256,13 @@ signals:
                                                          QLineEdit* pRegexLineEdit,
                                                          QWidget* pErrorAnimationWidget = nullptr);
 
+        std::shared_ptr<QRegularExpression> createRegex( const QString& regex,
+                                                         const QString& onSuccessMessages,
+                                                         const QString& onFailureMessages,
+                                                         bool appendRegexError,
+                                                         CRegexHistoryTextEdit* pRegexTextEdit,
+                                                         QWidget* pErrorAnimationWidget = nullptr);
+
         void updateStatusLabel( const QString& text, bool isError = false );
         void processOverwritePattern(const QString& alias, const QString checkedRegex, const QModelIndex editItem = QModelIndex());
 
@@ -260,7 +286,7 @@ signals:
         // default widgets
         QLabel* mpProgressBarLabel;
         QProgressBar* mpProgressBar;
-        QLineEdit* mpRegexLineEdit;
+        CRegexHistoryTextEdit* mpRegexTextEdit;
         QLabel* mpLabel;
         QComboBox* mpNumberOfThreadsCombobBox;
         QTableView* mpMainTableView;
@@ -307,4 +333,7 @@ signals:
         QElapsedTimer mMeasurementRequestTimer;
         std::shared_ptr<CTableMemoryJumper> mpSearchViewTableJumper;
         std::weak_ptr<IDLTLogsWrapperCreator> mpDLTLogsWrapperCreator;
+
+        CCustomPlotExtended* mpCustomPlotExtended;
+        tCoverageNoteProviderPtr mpCoverageNoteProvider;
 };

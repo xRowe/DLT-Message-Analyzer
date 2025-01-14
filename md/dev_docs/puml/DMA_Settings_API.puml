@@ -25,6 +25,24 @@ class "CAnalyzerComponent"
 
 }
 
+package "DMA_CoverageNote" #DDDDDD
+{
+
+class "CCoverageNoteProvider"
+{
+}
+
+}
+
+package "DMA_CoverageNote_API" #DDDDDD
+{
+
+class "CCoverageNoteComponent"
+{
+}
+
+}
+
 package "DMA_FiltersView" #DDDDDD
 {
 
@@ -117,6 +135,15 @@ class "CUMLViewComponent"
 
 }
 
+package "DMA_PlotView_API" #DDDDDD
+{
+
+class "CPlotViewComponent"
+{
+}
+
+}
+
 package "DMA_Plugin_API" #DDDDDD
 {
 
@@ -125,6 +152,28 @@ class "CDLTMessageAnalyzer"
 }
 
 class "Form"
+{
+}
+
+}
+
+package "DMA_RegexHistory" #DDDDDD
+{
+
+class "CRegexHistoryProvider"
+{
+}
+
+}
+
+package "DMA_RegexHistory_API" #DDDDDD
+{
+
+class "CRegexHistoryComponent"
+{
+}
+
+class "CRegexHistoryTextEdit"
 {
 }
 
@@ -203,8 +252,11 @@ CSettingsManagerClient <|-- CPatternsView : extends
 CSettingsManagerClient <|-- CPatternsViewComponent : extends
 CSettingsManagerClient <|-- CUMLView : extends
 CSettingsManagerClient <|-- CUMLViewComponent : extends
+CSettingsManagerClient <|-- CPlotViewComponent : extends
 CSettingsManagerClient <|-- CDLTMessageAnalyzer : extends
 CSettingsManagerClient <|-- Form : extends
+CSettingsManagerClient <|-- CRegexHistoryProvider : extends
+CSettingsManagerClient <|-- CRegexHistoryTextEdit : extends
 CSettingsManagerClient <|-- CSearchResultHighlightingDelegate : extends
 CSettingsManagerClient <|-- CSearchResultModel : extends
 CSettingsManagerClient <|-- CSearchViewComponent : extends
@@ -213,7 +265,11 @@ DMA::IComponent <|-- CSettingsComponent : implements
 QObject <|-- ISettingsManager : extends
 
 '====================Dependencies section====================
+CCoverageNoteProvider "1" --> "1" ISettingsManager : uses
+CCoverageNoteComponent "1" --> "1" ISettingsManager : passes to nested entities
 CDLTMessageAnalyzer "1" o-- "1" ISettingsManager : gets and uses
+CRegexHistoryProvider "1" o-- "1" ISettingsManager : uses
+CRegexHistoryComponent "1" --> "1" ISettingsManager : passes
 CSettingsComponent "1" --> "1" CSettingsManager : creates
 CSettingsComponent "1" *-- "1" ISettingsManager : provides
 CSettingsManagerClient "1" o-- "1" ISettingsManager : uses

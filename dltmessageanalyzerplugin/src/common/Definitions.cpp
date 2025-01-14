@@ -9,9 +9,20 @@
 #include <map>
 #include <vector>
 #include <atomic>
+#include <random>
+
+#ifdef DMA_TC_MALLOC_OPTIMIZATION_ENABLED
+#include <gperftools/malloc_extension.h>
+#elif DMA_GLIBC_MALLOC_OPTIMIZATION_ENABLED
+#include <malloc.h>
+#endif
+
+#include <QDateTime>
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QApplication>
+#include <QPalette>
 
 #include "Definitions.hpp"
 
@@ -19,6 +30,8 @@
 #include "QTextStream"
 
 #include "dlt_common.h"
+
+#include "components/logsWrapper/api/IMsgWrapper.hpp"
 
 #include "components/log/api/CLog.hpp"
 #include "CTreeItem.hpp"
@@ -34,22 +47,36 @@ const QString sDefaultRegexFileName = "Regex_Default.json";
 const QString sRegexScriptingDelimiter = "_and_";
 const QString sRGBPrefix = "RGB_";
 const QString sVARPrefix = "VAR_";
+const QString sGroupedViewPrefix = "GV";
 
 //////// UML_IDENTIFIERS ////////
 const QString s_UML_SEQUENCE_ID = "USID"; // - optional
 const QString s_UML_CLIENT = "UCL"; // - mandatory
-const QString s_UML_REQUEST = "URT"; // - mandatory
-const QString s_UML_RESPONSE = "URS"; // - mandatory
-const QString s_UML_EVENT = "UEV"; // - mandatory
+const QString s_UML_REQUEST = "URT"; // - request type
+const QString s_UML_RESPONSE = "URS"; // - request type
+const QString s_UML_EVENT = "UEV"; // - request type
 const QString s_UML_SERVICE = "US"; // - mandatory
 const QString s_UML_METHOD = "UM"; // - mandatory
 const QString s_UML_ARGUMENTS = "UA"; // - optional
+const QString s_UML_TIMESTAMP = "UTS"; // - optional
 const QString s_UML_ALIAS_DELIMITER = "_";
 const QString s_Regex_options = "(?J)";
+
+//////// OTHER CONSTANTS ////////
+static const tGroupedViewIdx sInvalidGroupedViewIdx = -1;
+static const tGroupedViewIdx sMaxGroupedViewIdx = std::numeric_limits<int>::max();
 
 static tUML_IDs_Map createUMLIDsMap()
 {
     tUML_IDs_Map result;
+
+    {
+        tUML_ID_Item item;
+        item.id_type = eUML_ID_Type::e_Optional;
+        item.id_str = s_UML_TIMESTAMP;
+        item.description = "Call timestamp";
+        result.insert(std::make_pair(eUML_ID::UML_TIMESTAMP, item));
+    }
 
     {
         tUML_ID_Item item;
@@ -123,166 +150,191 @@ const tUML_IDs_Map s_UML_IDs_Map = createUMLIDsMap();
 const tMsgId INVALID_MSG_ID = -1;
 const tRequestId INVALID_REQUEST_ID = static_cast<uint>(-1);
 
-const std::map<QString, QColor> sColorsMap =
+const std::map<QString, QColor>& getColorsMap()
 {
-{"ok", QColor(0,150,0)},
-{"warning", QColor(150,150,0)},
-{"error", QColor(150,0,0)},
-{"black", QColor(0,0,0)},
-{"white", QColor(255,255,255)},
-{"red", QColor(255,0,0)},
-{"lime", QColor(0,255,0)},
-{"blue", QColor(0,0,255)},
-{"yellow", QColor(255,255,0)},
-{"cyan", QColor(0,255,255)},
-{"magenta", QColor(255,0,255)},
-{"silver", QColor(192,192,192)},
-{"gray", QColor(128,128,128)},
-{"maroon", QColor(128,0,0)},
-{"olive", QColor(128,128,0)},
-{"green", QColor(0,128,0)},
-{"purple", QColor(128,0,128)},
-{"teal", QColor(0,128,128)},
-{"navy", QColor(0,0,128)},
-{"maroon", QColor(128,0,0)},
-{"dark_red", QColor(139,0,0)},
-{"brown", QColor(165,42,42)},
-{"firebrick", QColor(178,34,34)},
-{"crimson", QColor(220,20,60)},
-{"red", QColor(255,0,0)},
-{"tomato", QColor(255,99,71)},
-{"coral", QColor(255,127,80)},
-{"indian_red", QColor(205,92,92)},
-{"light_coral", QColor(240,128,128)},
-{"dark_salmon", QColor(233,150,122)},
-{"salmon", QColor(250,128,114)},
-{"light_salmon", QColor(255,160,122)},
-{"orange_red", QColor(255,69,0)},
-{"dark_orange", QColor(255,140,0)},
-{"orange", QColor(255,165,0)},
-{"gold", QColor(255,215,0)},
-{"dark_golden_rod", QColor(184,134,11)},
-{"golden_rod", QColor(218,165,32)},
-{"pale_golden_rod", QColor(238,232,170)},
-{"dark_khaki", QColor(189,183,107)},
-{"khaki", QColor(240,230,140)},
-{"olive", QColor(128,128,0)},
-{"yellow", QColor(255,255,0)},
-{"yellow_green", QColor(154,205,50)},
-{"dark_olive_green", QColor(85,107,47)},
-{"olive_drab", QColor(107,142,35)},
-{"lawn_green", QColor(124,252,0)},
-{"chart_reuse", QColor(127,255,0)},
-{"green_yellow", QColor(173,255,47)},
-{"dark_green", QColor(0,100,0)},
-{"green", QColor(0,128,0)},
-{"forest_green", QColor(34,139,34)},
-{"lime", QColor(0,255,0)},
-{"lime_green", QColor(50,205,50)},
-{"light_green", QColor(144,238,144)},
-{"pale_green", QColor(152,251,152)},
-{"dark_sea_green", QColor(143,188,143)},
-{"medium_spring_green", QColor(0,250,154)},
-{"spring_green", QColor(0,255,127)},
-{"sea_green", QColor(46,139,87)},
-{"medium_aqua_marine", QColor(102,205,170)},
-{"medium_sea_green", QColor(60,179,113)},
-{"light_sea_green", QColor(32,178,170)},
-{"dark_slate_gray", QColor(47,79,79)},
-{"teal", QColor(0,128,128)},
-{"dark_cyan", QColor(0,139,139)},
-{"aqua", QColor(0,255,255)},
-{"cyan", QColor(0,255,255)},
-{"light_cyan", QColor(224,255,255)},
-{"dark_turquoise", QColor(0,206,209)},
-{"turquoise", QColor(64,224,208)},
-{"medium_turquoise", QColor(72,209,204)},
-{"pale_turquoise", QColor(175,238,238)},
-{"aqua_marine", QColor(127,255,212)},
-{"powder_blue", QColor(176,224,230)},
-{"cadet_blue", QColor(95,158,160)},
-{"steel_blue", QColor(70,130,180)},
-{"corn_flower_blue", QColor(100,149,237)},
-{"deep_sky_blue", QColor(0,191,255)},
-{"dodger_blue", QColor(30,144,255)},
-{"light_blue", QColor(173,216,230)},
-{"sky_blue", QColor(135,206,235)},
-{"light_sky_blue", QColor(135,206,250)},
-{"midnight_blue", QColor(25,25,112)},
-{"navy", QColor(0,0,128)},
-{"dark_blue", QColor(0,0,139)},
-{"medium_blue", QColor(0,0,205)},
-{"blue", QColor(0,0,255)},
-{"royal_blue", QColor(65,105,225)},
-{"blue_violet", QColor(138,43,226)},
-{"indigo", QColor(75,0,130)},
-{"dark_slate_blue", QColor(72,61,139)},
-{"slate_blue", QColor(106,90,205)},
-{"medium_slate_blue", QColor(123,104,238)},
-{"medium_purple", QColor(147,112,219)},
-{"dark_magenta", QColor(139,0,139)},
-{"dark_violet", QColor(148,0,211)},
-{"dark_orchid", QColor(153,50,204)},
-{"medium_orchid", QColor(186,85,211)},
-{"purple", QColor(128,0,128)},
-{"thistle", QColor(216,191,216)},
-{"plum", QColor(221,160,221)},
-{"violet", QColor(238,130,238)},
-{"magenta", QColor(255,0,255)},
-{"orchid", QColor(218,112,214)},
-{"medium_violet_red", QColor(199,21,133)},
-{"pale_violet_red", QColor(219,112,147)},
-{"deep_pink", QColor(255,20,147)},
-{"hot_pink", QColor(255,105,180)},
-{"light_pink", QColor(255,182,193)},
-{"pink", QColor(255,192,203)},
-{"antique_white", QColor(250,235,215)},
-{"beige", QColor(245,245,220)},
-{"bisque", QColor(255,228,196)},
-{"blanched_almond", QColor(255,235,205)},
-{"wheat", QColor(245,222,179)},
-{"corn_silk", QColor(255,248,220)},
-{"lemon_chiffon", QColor(255,250,205)},
-{"light golden rod yellow", QColor(250,250,210)},
-{"light_yellow", QColor(255,255,224)},
-{"saddle_brown", QColor(139,69,19)},
-{"sienna", QColor(160,82,45)},
-{"chocolate", QColor(210,105,30)},
-{"peru", QColor(205,133,63)},
-{"sandy_brown", QColor(244,164,96)},
-{"burly_wood", QColor(222,184,135)},
-{"tan", QColor(210,180,140)},
-{"rosy_brown", QColor(188,143,143)},
-{"moccasin", QColor(255,228,181)},
-{"navajo_white", QColor(255,222,173)},
-{"peach_puff", QColor(255,218,185)},
-{"misty_rose", QColor(255,228,225)},
-{"lavender_blush", QColor(255,240,245)},
-{"linen", QColor(250,240,230)},
-{"old_lace", QColor(253,245,230)},
-{"papaya_whip", QColor(255,239,213)},
-{"sea_shell", QColor(255,245,238)},
-{"mint_cream", QColor(245,255,250)},
-{"slate_gray", QColor(112,128,144)},
-{"light_slate_gray", QColor(119,136,153)},
-{"light_steel_blue", QColor(176,196,222)},
-{"lavender", QColor(230,230,250)},
-{"floral_white", QColor(255,250,240)},
-{"alice_blue", QColor(240,248,255)},
-{"ghost_white", QColor(248,248,255)},
-{"honeydew", QColor(240,255,240)},
-{"ivory", QColor(255,255,240)},
-{"azure", QColor(240,255,255)},
-{"snow", QColor(255,250,250)},
-{"black", QColor(0,0,0)},
-{"dim_gray", QColor(105,105,105)},
-{"gray", QColor(128,128,128)},
-{"dark_gray", QColor(169,169,169)},
-{"silver", QColor(192,192,192)},
-{"ight_gray", QColor(211,211,211)},
-{"gainsboro", QColor(220,220,220)},
-{"white_smoke", QColor(245,245,245)},
-{"white", QColor(255,255,255)}};
+    static const std::map<QString, QColor> sColorsMap =
+        {
+         {"ok", QColor(0,150,0)},
+         {"warning", QColor(150,150,0)},
+         {"error", QColor(150,0,0)},
+         {"black", QColor(0,0,0)},
+         {"white", QColor(255,255,255)},
+         {"red", QColor(255,0,0)},
+         {"lime", QColor(0,255,0)},
+         {"blue", QColor(0,0,255)},
+         {"yellow", QColor(255,255,0)},
+         {"cyan", QColor(0,255,255)},
+         {"magenta", QColor(255,0,255)},
+         {"silver", QColor(192,192,192)},
+         {"gray", QColor(128,128,128)},
+         {"maroon", QColor(128,0,0)},
+         {"olive", QColor(128,128,0)},
+         {"green", QColor(0,128,0)},
+         {"purple", QColor(128,0,128)},
+         {"teal", QColor(0,128,128)},
+         {"navy", QColor(0,0,128)},
+         {"maroon", QColor(128,0,0)},
+         {"dark_red", QColor(139,0,0)},
+         {"brown", QColor(165,42,42)},
+         {"firebrick", QColor(178,34,34)},
+         {"crimson", QColor(220,20,60)},
+         {"red", QColor(255,0,0)},
+         {"tomato", QColor(255,99,71)},
+         {"coral", QColor(255,127,80)},
+         {"indian_red", QColor(205,92,92)},
+         {"light_coral", QColor(240,128,128)},
+         {"dark_salmon", QColor(233,150,122)},
+         {"salmon", QColor(250,128,114)},
+         {"light_salmon", QColor(255,160,122)},
+         {"orange_red", QColor(255,69,0)},
+         {"dark_orange", QColor(255,140,0)},
+         {"orange", QColor(255,165,0)},
+         {"gold", QColor(255,215,0)},
+         {"dark_golden_rod", QColor(184,134,11)},
+         {"golden_rod", QColor(218,165,32)},
+         {"pale_golden_rod", QColor(238,232,170)},
+         {"dark_khaki", QColor(189,183,107)},
+         {"khaki", QColor(240,230,140)},
+         {"olive", QColor(128,128,0)},
+         {"yellow", QColor(255,255,0)},
+         {"yellow_green", QColor(154,205,50)},
+         {"dark_olive_green", QColor(85,107,47)},
+         {"olive_drab", QColor(107,142,35)},
+         {"lawn_green", QColor(124,252,0)},
+         {"chart_reuse", QColor(127,255,0)},
+         {"green_yellow", QColor(173,255,47)},
+         {"dark_green", QColor(0,100,0)},
+         {"green", QColor(0,128,0)},
+         {"forest_green", QColor(34,139,34)},
+         {"lime", QColor(0,255,0)},
+         {"lime_green", QColor(50,205,50)},
+         {"light_green", QColor(144,238,144)},
+         {"pale_green", QColor(152,251,152)},
+         {"dark_sea_green", QColor(143,188,143)},
+         {"medium_spring_green", QColor(0,250,154)},
+         {"spring_green", QColor(0,255,127)},
+         {"sea_green", QColor(46,139,87)},
+         {"medium_aqua_marine", QColor(102,205,170)},
+         {"medium_sea_green", QColor(60,179,113)},
+         {"light_sea_green", QColor(32,178,170)},
+         {"dark_slate_gray", QColor(47,79,79)},
+         {"teal", QColor(0,128,128)},
+         {"dark_cyan", QColor(0,139,139)},
+         {"aqua", QColor(0,255,255)},
+         {"cyan", QColor(0,255,255)},
+         {"light_cyan", QColor(224,255,255)},
+         {"dark_turquoise", QColor(0,206,209)},
+         {"turquoise", QColor(64,224,208)},
+         {"medium_turquoise", QColor(72,209,204)},
+         {"pale_turquoise", QColor(175,238,238)},
+         {"aqua_marine", QColor(127,255,212)},
+         {"powder_blue", QColor(176,224,230)},
+         {"cadet_blue", QColor(95,158,160)},
+         {"steel_blue", QColor(70,130,180)},
+         {"corn_flower_blue", QColor(100,149,237)},
+         {"deep_sky_blue", QColor(0,191,255)},
+         {"dodger_blue", QColor(30,144,255)},
+         {"light_blue", QColor(173,216,230)},
+         {"sky_blue", QColor(135,206,235)},
+         {"light_sky_blue", QColor(135,206,250)},
+         {"midnight_blue", QColor(25,25,112)},
+         {"navy", QColor(0,0,128)},
+         {"dark_blue", QColor(0,0,139)},
+         {"medium_blue", QColor(0,0,205)},
+         {"blue", QColor(0,0,255)},
+         {"royal_blue", QColor(65,105,225)},
+         {"blue_violet", QColor(138,43,226)},
+         {"indigo", QColor(75,0,130)},
+         {"dark_slate_blue", QColor(72,61,139)},
+         {"slate_blue", QColor(106,90,205)},
+         {"medium_slate_blue", QColor(123,104,238)},
+         {"medium_purple", QColor(147,112,219)},
+         {"dark_magenta", QColor(139,0,139)},
+         {"dark_violet", QColor(148,0,211)},
+         {"dark_orchid", QColor(153,50,204)},
+         {"medium_orchid", QColor(186,85,211)},
+         {"purple", QColor(128,0,128)},
+         {"thistle", QColor(216,191,216)},
+         {"plum", QColor(221,160,221)},
+         {"violet", QColor(238,130,238)},
+         {"magenta", QColor(255,0,255)},
+         {"orchid", QColor(218,112,214)},
+         {"medium_violet_red", QColor(199,21,133)},
+         {"pale_violet_red", QColor(219,112,147)},
+         {"deep_pink", QColor(255,20,147)},
+         {"hot_pink", QColor(255,105,180)},
+         {"light_pink", QColor(255,182,193)},
+         {"pink", QColor(255,192,203)},
+         {"antique_white", QColor(250,235,215)},
+         {"beige", QColor(245,245,220)},
+         {"bisque", QColor(255,228,196)},
+         {"blanched_almond", QColor(255,235,205)},
+         {"wheat", QColor(245,222,179)},
+         {"corn_silk", QColor(255,248,220)},
+         {"lemon_chiffon", QColor(255,250,205)},
+         {"light golden rod yellow", QColor(250,250,210)},
+         {"light_yellow", QColor(255,255,224)},
+         {"saddle_brown", QColor(139,69,19)},
+         {"sienna", QColor(160,82,45)},
+         {"chocolate", QColor(210,105,30)},
+         {"peru", QColor(205,133,63)},
+         {"sandy_brown", QColor(244,164,96)},
+         {"burly_wood", QColor(222,184,135)},
+         {"tan", QColor(210,180,140)},
+         {"rosy_brown", QColor(188,143,143)},
+         {"moccasin", QColor(255,228,181)},
+         {"navajo_white", QColor(255,222,173)},
+         {"peach_puff", QColor(255,218,185)},
+         {"misty_rose", QColor(255,228,225)},
+         {"lavender_blush", QColor(255,240,245)},
+         {"linen", QColor(250,240,230)},
+         {"old_lace", QColor(253,245,230)},
+         {"papaya_whip", QColor(255,239,213)},
+         {"sea_shell", QColor(255,245,238)},
+         {"mint_cream", QColor(245,255,250)},
+         {"slate_gray", QColor(112,128,144)},
+         {"light_slate_gray", QColor(119,136,153)},
+         {"light_steel_blue", QColor(176,196,222)},
+         {"lavender", QColor(230,230,250)},
+         {"floral_white", QColor(255,250,240)},
+         {"alice_blue", QColor(240,248,255)},
+         {"ghost_white", QColor(248,248,255)},
+         {"honeydew", QColor(240,255,240)},
+         {"ivory", QColor(255,255,240)},
+         {"azure", QColor(240,255,255)},
+         {"snow", QColor(255,250,250)},
+         {"black", QColor(0,0,0)},
+         {"dim_gray", QColor(105,105,105)},
+         {"gray", QColor(128,128,128)},
+         {"dark_gray", QColor(169,169,169)},
+         {"silver", QColor(192,192,192)},
+         {"ight_gray", QColor(211,211,211)},
+         {"gainsboro", QColor(220,220,220)},
+         {"white_smoke", QColor(245,245,245)},
+         {"white", QColor(255,255,255)}};
+
+    return sColorsMap;
+}
+
+static std::list<QColor> createColorsList()
+{
+    std::list<QColor> result;
+
+    const auto& colorsMap = getColorsMap();
+
+    for(const auto& colorPair : colorsMap)
+    {
+        result.push_back(colorPair.second);
+    }
+
+    return result;
+}
+
+const std::list<QColor>& getColorsList()
+{
+    static std::list<QColor> sColorsList = createColorsList();
+    return sColorsList;
+}
 
 QVector<QColor> generateColors( const tHighlightingGradient& gradient )
 {
@@ -391,89 +443,39 @@ tHighlightingRange::tHighlightingRange( const tHighlightingRangeItem& from_,
                                         const tHighlightingRangeItem& to_,
                                         const QColor& color_,
                                         bool explicitColor_ ):
-from(from_), to(to_), color(color_), explicitColor(explicitColor_)
+from(from_), to(to_), color_code(color_.rgb()), explicitColor(explicitColor_)
 {}
 
 tHighlightingRange::tHighlightingRange():
-from(0), to(0), color(0,0,0), explicitColor(false)
+from(0), to(0), color_code(RGB_MASK), explicitColor(false)
 {}
 
 bool tHighlightingRange::operator< ( const tHighlightingRange& rVal ) const
 {
-   bool bResult = false;
-
-   if( from < rVal.from )
-   {
-       bResult = true;
-   }
-   else if( from > rVal.from )
-   {
-       bResult = false;
-   }
-   else // if from == rVal.from
-   {
-       if( to < rVal.to )
-       {
-           bResult = true;
-       }
-       else
-       {
-           bResult = false;
-       }
-   }
-
-   return bResult;
-}
-
-/////////////////////////////tIntRangePtrWrapper/////////////////////////////
-bool tIntRangePtrWrapper::operator< ( const tIntRangePtrWrapper& rVal ) const
-{
     bool bResult = false;
 
-    if(pRange == nullptr && rVal.pRange != nullptr)
-        bResult = true;
-    else if(pRange != nullptr && rVal.pRange == nullptr)
-        bResult = false;
-    else if(pRange == nullptr && rVal.pRange == nullptr)
-        bResult = true;
-    else
+    if( from < rVal.from )
     {
-        if( pRange->from < rVal.pRange->from )
+        bResult = true;
+    }
+    else if( from > rVal.from )
+    {
+        bResult = false;
+    }
+    else // if from == rVal.from
+    {
+        if( to < rVal.to )
         {
             bResult = true;
         }
-        else if( pRange->from > rVal.pRange->from )
+        else
         {
             bResult = false;
-        }
-        else // if from == rVal.from
-        {
-            if( pRange->to < rVal.pRange->to )
-            {
-                bResult = true;
-            }
-            else
-            {
-                bResult = false;
-            }
         }
     }
 
     return bResult;
 }
-
-bool tIntRangePtrWrapper::operator== ( const tIntRangePtrWrapper& rVal ) const
-{
-    if(pRange == nullptr && rVal.pRange != nullptr)
-        return false;
-    else if(pRange != nullptr && rVal.pRange == nullptr)
-        return false;
-    else if(pRange == nullptr && rVal.pRange == nullptr)
-        return true;
-
-    return ( pRange->from == rVal.pRange->from && pRange->to == rVal.pRange->to );
-}
-//////////////////////////////////////////////////////////////////////////
 
 /////////////////////////////tQStringPtrWrapper///////////////////////////
 tQStringPtrWrapper::tQStringPtrWrapper(): pString(nullptr)
@@ -513,6 +515,11 @@ bool tQStringPtrWrapper::operator== ( const tQStringPtrWrapper& rVal ) const
         return true;
 
     return ( *pString == *rVal.pString );
+}
+
+bool tQStringPtrWrapper::operator!= ( const tQStringPtrWrapper& rVal ) const
+{
+    return !(*this == rVal);
 }
 //////////////////////////////////////////////////////////////////////////
 
@@ -593,7 +600,6 @@ tTreeItemSharedPtr getMatchesTree( const tFoundMatches& foundMatches )
 
         typedef std::vector<const tFoundMatch*> tStack;
         tStack matchesStack;
-        matchesStack.reserve(static_cast<std::size_t>(foundMatches.size()) + 10); // +10 to cover possible overhead of nested groups.
 
         auto switchToParent = [&pCurrentItem, &matchesStack](int numberOfElementsToPop)
         {
@@ -614,16 +620,15 @@ tTreeItemSharedPtr getMatchesTree( const tFoundMatches& foundMatches )
 
             assert(false == data.empty());
 
-            tIntRangePtrWrapper rangePtrWrapper;
-            rangePtrWrapper.pRange = &match.range;
-            tDataItem rangeVariant( rangePtrWrapper );
+            tIntRange range = match.range;
+            tDataItem rangeVariant( range );
             auto* pAddedChild = pCurrentItem->appendChild(rangeVariant, data);
             pCurrentItem = pAddedChild;
 
             matchesStack.push_back( &match ); // push new element to the stack
         };
 
-        for(const auto& match : foundMatches)
+        for(const auto& match : foundMatches.foundMatchesVec)
         {
             int counter = 0;
 
@@ -694,10 +699,11 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
         return dummyResult;
     }
 
-    tHighlightingRangeList resultList;
-    resultList.reserve(static_cast<std::size_t>(regexScriptingMetadata.getItemsVec().size() + 10)); // +10 to cover overhead which might be caused with nested groups
+    tCalcRangesCoverageMulticolorResult result;
+    tHighlightingRangeVec& resultVec = result.highlightingRangeVec;
+    resultVec.reserve(static_cast<std::size_t>(regexScriptingMetadata.getItemsVec().size()));
 
-    auto postVisitFunction = [&resultList, &inputRange, &regexScriptingMetadata, &gradientColors, &groupIdToColorMap](tTreeItem* pItem)
+    auto postVisitFunction = [&resultVec, &inputRange, &regexScriptingMetadata, &gradientColors, &groupIdToColorMap](tTreeItem* pItem)
     {
         const auto& match = *(pItem->data(static_cast<int>(eTreeColumns::eTreeColumn_FoundMatch)).get<const tFoundMatch*>());
 
@@ -705,7 +711,7 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
         //         .arg(match.idx)
         //         .arg(match.range.from)
         //         .arg(match.range.to)
-        //         .arg(*match.pMatchStr));
+        //         .arg(match.matchStr));
 
         if( ( match.range.from < inputRange.from && match.range.to < inputRange.from ) ||
             ( match.range.from > inputRange.to && match.range.to > inputRange.to ) )
@@ -736,7 +742,7 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
 
             if(true == scriptedColor.isSet)
             {
-                color = scriptedColor.color;
+                color = QColor(scriptedColor.color_code);
                 bIsExplicitColor = true;
             }
             else
@@ -769,7 +775,7 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
                 {
                     // let's add it
                     tAnalysisRange rangeToBeAdded( tIntRange( analysisRange.from, firstChildAnalysisRange.from - 1 ), inputRange);
-                    resultList.push_back( tHighlightingRange( rangeToBeAdded.from,
+                    resultVec.push_back( tHighlightingRange( rangeToBeAdded.from,
                                                               rangeToBeAdded.to,
                                                               selectedColor.second,
                                                               selectedColor.first ) );
@@ -779,18 +785,18 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
             // wee need to process "between children" cases in a loop ( in case if there are 2 children or more )
             if(children.size() >= 2)
             {
-                for(auto it = children.begin(); it != children.end() - 1; ++it)
+                for(auto it = children.begin(); it != std::prev(children.end()); ++it)
                 {
                     const auto& firstChildMatch = *((*it)->data(static_cast<int>(eTreeColumns::eTreeColumn_FoundMatch)).get<const tFoundMatch*>());
                     tAnalysisRange firstChildAnalysisRange( firstChildMatch.range, inputRange );
 
-                    const auto& secondChildMatch = *((*(it+1))->data(static_cast<int>(eTreeColumns::eTreeColumn_FoundMatch)).get<const tFoundMatch*>());
+                    const auto& secondChildMatch = *((*(std::next(it)))->data(static_cast<int>(eTreeColumns::eTreeColumn_FoundMatch)).get<const tFoundMatch*>());
                     tAnalysisRange secondChildAnalysisRange( secondChildMatch.range, inputRange );
 
                     if((secondChildAnalysisRange.from - firstChildAnalysisRange.to) > 1)
                     {
                         tAnalysisRange rangeToBeAdded( tIntRange( firstChildAnalysisRange.to+1, secondChildAnalysisRange.from-1 ), inputRange);
-                        resultList.push_back( tHighlightingRange( rangeToBeAdded.from,
+                        resultVec.push_back( tHighlightingRange( rangeToBeAdded.from,
                                                                   rangeToBeAdded.to,
                                                                   selectedColor.second,
                                                                   selectedColor.first ) );
@@ -800,7 +806,7 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
 
             // we need to process "from last child to end" case manually
             {
-                const auto& lastChild = *(children.end() - 1);
+                const auto& lastChild = *(std::prev(children.end()));
                 const auto& lastChildMatch = *(lastChild->data(static_cast<int>(eTreeColumns::eTreeColumn_FoundMatch)).get<const tFoundMatch*>());
                 tAnalysisRange lastChildAnalysisRange(lastChildMatch.range, inputRange);
 
@@ -808,7 +814,7 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
                 {
                     // let's add it
                     tAnalysisRange rangeToBeAdded( tIntRange( lastChildAnalysisRange.to + 1, analysisRange.to ), inputRange);
-                    resultList.push_back( tHighlightingRange( rangeToBeAdded.from,
+                    resultVec.push_back( tHighlightingRange( rangeToBeAdded.from,
                                                               rangeToBeAdded.to,
                                                               selectedColor.second,
                                                               selectedColor.first ) );
@@ -818,7 +824,7 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
         else // if there are no children
         {
             // let's add item unconditionally
-            resultList.push_back( tHighlightingRange( analysisRange.from,
+            resultVec.push_back( tHighlightingRange( analysisRange.from,
                                                       analysisRange.to,
                                                       selectedColor.second,
                                                       selectedColor.first ) );
@@ -833,28 +839,21 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
 
     if(0 != normalizationIdx)
     {
-        for(auto& resultListItem : resultList)
+        for(auto& resultVecItem : resultVec)
         {
-            resultListItem.from = resultListItem.from - normalizationIdx;
-            resultListItem.to = resultListItem.to - normalizationIdx;
+            resultVecItem.from = resultVecItem.from - normalizationIdx;
+            resultVecItem.to = resultVecItem.to - normalizationIdx;
         }
     }
 
-    tCalcRangesCoverageMulticolorResult result;
-
-
-    result.highlightingRangeSet.insert(resultList.begin(), resultList.end());
-
-    //for( const auto& resultItem : resultList )
-    //{
-        //SEND_MSG(QString("[calcRangesCoverageMulticolor][result] - |from-%1;to-%2;red-%3;green-%4;blue-%5,expColor-%6|")
-        //        .arg(resultItem.from)
-        //        .arg(resultItem.to)
-        //        .arg(resultItem.color.red())
-        //        .arg(resultItem.color.green())
-        //        .arg(resultItem.color.blue())
-        //        .arg(resultItem.explicitColor));
-    //}
+    //  for( const auto& resultItem : result.highlightingRangeVec )
+    //  {
+    //      SEND_MSG(QString("[calcRangesCoverageMulticolor][result] - |from-%1;to-%2;color-%3,expColor-%4|")
+    //              .arg(resultItem.from)
+    //              .arg(resultItem.to)
+    //              .arg(resultItem.color_code)
+    //              .arg(resultItem.explicitColor));
+    //  }
 
 #ifdef DEBUG_CALC_RANGES
     auto nsecEnd = timer.nsecsElapsed();
@@ -869,28 +868,61 @@ tCalcRangesCoverageMulticolorResult calcRangesCoverageMulticolor( const tTreeIte
 }
 
 //tItemMetadata
-tItemMetadata::tItemMetadata(): msgId(-1),
+tItemMetadata::tItemMetadata():
     highlightingInfoMultiColor(),
     fieldRanges(),
+    msgId(-1),
     strSize(0),
-    msgSize(0u),
-    timeStamp(0u)
+    timeStamp(0u),
+    msgSize(0u)
 {
 
 }
 
+tItemMetadata::tItemMetadata(const tItemMetadata& rhs):
+highlightingInfoMultiColor(rhs.highlightingInfoMultiColor),
+fieldRanges(rhs.fieldRanges),
+pUMLInfo(rhs.pUMLInfo == nullptr ? nullptr : std::make_unique<tUMLInfo>(*rhs.pUMLInfo)),
+pPlotViewInfo(rhs.pPlotViewInfo == nullptr ? nullptr : std::make_unique<tPlotViewInfo>(*rhs.pPlotViewInfo)),
+msgId(rhs.msgId),
+msgIdxInMainTable(rhs.msgIdxInMainTable),
+strSize(rhs.strSize),
+timeStamp(rhs.timeStamp),
+msgSize(rhs.msgSize)
+{
+
+}
+
+tItemMetadata& tItemMetadata::operator= (const tItemMetadata& rhs)
+{
+    if(&rhs == this)
+        return *this;
+
+    highlightingInfoMultiColor = rhs.highlightingInfoMultiColor;
+    fieldRanges = rhs.fieldRanges;
+    pUMLInfo = rhs.pUMLInfo == nullptr ? nullptr : std::make_unique<tUMLInfo>(*rhs.pUMLInfo);
+    pPlotViewInfo = rhs.pPlotViewInfo == nullptr ? nullptr : std::make_unique<tPlotViewInfo>(*rhs.pPlotViewInfo);
+    msgId = rhs.msgId;
+    msgIdxInMainTable = rhs.msgIdxInMainTable;
+    strSize = rhs.strSize;
+    timeStamp = rhs.timeStamp;
+    msgSize = rhs.msgSize;
+
+    return *this;
+}
+
 tItemMetadata::tItemMetadata( const tMsgId& msgId_,
-                              const tMsgId& msgIdFiltered_,
+                              const tMsgId& msgIdxInMainTable_,
                               const tFieldRanges& fieldRanges_,
                               const int& strSize_,
-                              const unsigned int& msgSize_,
+                              const std::uint32_t& msgSize_,
                               const unsigned int& timeStamp_):
-    msgId(msgId_),
-    msgIdFiltered(msgIdFiltered_),
     fieldRanges(fieldRanges_),
+    msgId(msgId_),
+    msgIdxInMainTable(msgIdxInMainTable_),
     strSize(strSize_),
-    msgSize(msgSize_),
-    timeStamp(timeStamp_)
+    timeStamp(timeStamp_),
+    msgSize(msgSize_)
 {
 
 }
@@ -940,14 +972,14 @@ tTreeItemSharedPtr tItemMetadata::updateHighlightingInfo( const tFoundMatches& f
         typedef std::map<tSortedMatchKey, const tFoundMatch*> tSortedMatches;
         tSortedMatches sortedMatches;
 
-        for(const auto& match : foundMatches)
+        for(const auto& match : foundMatches.foundMatchesVec)
         {
             sortedMatches.insert(std::make_pair(tSortedMatchKey(match.range.from, match.range.to - match.range.from), &match));
         }
 
         for(const auto& match : sortedMatches)
         {
-            if(nullptr != match.second->pMatchStr && false == match.second->pMatchStr->isEmpty())
+            if(false == match.second->matchStr.isEmpty())
             {
                 result.insert(std::make_pair( match.second->idx, gradientColorsCounter % maxGradientColorsSize ));
                 ++gradientColorsCounter;
@@ -963,9 +995,9 @@ tTreeItemSharedPtr tItemMetadata::updateHighlightingInfo( const tFoundMatches& f
     {
         auto highlightingRangesMulticolorRes = calcRangesCoverageMulticolor( pMatchesTree, it.value(), regexScriptingMetadata, gradientColors, createColorsMappingTable() );
 
-        if(false == highlightingRangesMulticolorRes.highlightingRangeSet.empty())
+        if(false == highlightingRangesMulticolorRes.highlightingRangeVec.empty())
         {
-            highlightingInfoMultiColor.insert( it.key(), highlightingRangesMulticolorRes.highlightingRangeSet );
+            highlightingInfoMultiColor.insert( it.key(), highlightingRangesMulticolorRes.highlightingRangeVec );
         }
     }
 
@@ -983,28 +1015,30 @@ tTreeItemSharedPtr tItemMetadata::updateHighlightingInfo( const tFoundMatches& f
 }
 
 tItemMetadata::tUpdateUMLInfoResult tItemMetadata::updateUMLInfo(const tFoundMatches& foundMatches,
-                                                const tRegexScriptingMetadata& regexScriptingMetadata,
-                                                tTreeItemSharedPtr pTree)
+                                                                 const tRegexScriptingMetadata& regexScriptingMetadata,
+                                                                 tTreeItemSharedPtr pTree)
 {
     tUpdateUMLInfoResult result;
 
     tRegexScriptingMetadata::tCheckIDs checkIDs;
 
-    for(const auto& match : foundMatches)
+    for(const auto& match : foundMatches.foundMatchesVec)
     {
         checkIDs.insert(match.idx);
     }
 
+    pUMLInfo = std::make_unique<tUMLInfo>();
+
     // check if string matches all required UML attributes
-    UMLInfo.bUMLConstraintsFulfilled = regexScriptingMetadata.doesContainConsistentUMLData(false, checkIDs).first;
-    UMLInfo.UMLDataMap.clear();
+    pUMLInfo->bUMLConstraintsFulfilled = regexScriptingMetadata.doesContainConsistentUMLData(false, checkIDs).first;
+    pUMLInfo->UMLDataMap.clear();
 
     /*
      * What should we fill in here?
      * E.g. for the following string:
      * UI
      * IF1
-     * [daimler.if1verbose] 10886 MainMultiSeat#2:RP : setIsClientConnected() [unknown:0]]
+     * [comp.if1verbose] 10886 Service#2:RP : setIsClientConnected() [unknown:0]]
      * With the following regex:
      * ^(?<UCL>[\w]+) IF1 .*\] (?<USID>[\d]+) (?<US>[A-Za-z]+#[\d]+):(?<URS>RP) : (?<UM>[\w])\((?<UA>.*)\) \[unknown
      * We will need to fill in the following information:
@@ -1012,13 +1046,14 @@ tItemMetadata::tUpdateUMLInfoResult tItemMetadata::updateUMLInfo(const tFoundMat
      * UMLDataMap( { eUML_ID::UML_CLIENT, { eSearchResultColumn::Apid, {0, 3} },
      *             { eUML_ID::UML_SEQUENCE_ID, { eSearchResultColumn::Payload, {22, 26} }
      *             { eUML_ID::UML_SERVICE, { eSearchResultColumn::Payload, {28, 40} }
-     *             { eUML_ID::UML_RESPONSE, { eSearchResultColumn::Payload, {44, 45} } )
+     *             { eUML_ID::UML_RESPONSE, { eSearchResultColumn::Payload, {44, 45} } ),
+     * bContains_Req_Resp_Ev = false
      *  );
      */
 
     auto pMatchesTree = pTree != nullptr ? pTree : getMatchesTree(foundMatches);
 
-    if(true == UMLInfo.bUMLConstraintsFulfilled) // if UML matches are sufficient
+    if(true == pUMLInfo->bUMLConstraintsFulfilled) // if UML matches are sufficient
     {
         if(nullptr != pMatchesTree)
         {
@@ -1043,7 +1078,7 @@ tItemMetadata::tUpdateUMLInfoResult tItemMetadata::updateUMLInfo(const tFoundMat
                         const auto& pGroupMetadata = groups[groupIdx];
 
                         if(nullptr != pGroupMetadata &&
-                           ( false == pGroupMetadata->optionalUML_ID.optional_UML_IDMap.empty() ) )
+                            ( false == pGroupMetadata->optionalUML_ID.optional_UML_IDMap.empty() ) )
                         {
                             res.first = true; // we got the UML data
                             res.second = &pGroupMetadata->optionalUML_ID.optional_UML_IDMap;
@@ -1064,13 +1099,14 @@ tItemMetadata::tUpdateUMLInfoResult tItemMetadata::updateUMLInfo(const tFoundMat
                         auto isReqResEv = [&UML_IDItem]()
                         {
                             return UML_IDItem.first == eUML_ID::UML_REQUEST ||
-                               UML_IDItem.first == eUML_ID::UML_RESPONSE ||
-                               UML_IDItem.first == eUML_ID::UML_EVENT;
+                                   UML_IDItem.first == eUML_ID::UML_RESPONSE ||
+                                   UML_IDItem.first == eUML_ID::UML_EVENT;
                         };
 
-                        if(false == isReqResEv() || false == UMLInfo.bContains_Req_Resp_Ev)
+                        if(false == isReqResEv() || false == pUMLInfo->bContains_Req_Resp_Ev)
                         {
-                            if(true == UML_IDItem.second.UML_Custom_Value.isEmpty()) // if there is no client's custom value
+                            if(nullptr == UML_IDItem.second.pUML_Custom_Value ||
+                               true == UML_IDItem.second.pUML_Custom_Value->isEmpty()) // if there is no client's custom value
                             {
                                 //let's grab groups content
                                 tUMLDataItem UMLDataItem;
@@ -1080,31 +1116,31 @@ tItemMetadata::tUpdateUMLInfoResult tItemMetadata::updateUMLInfo(const tFoundMat
                                     const auto& fieldRange = *it;
 
                                     bool insideRange = (match.range.from >= fieldRange.from || match.range.to >= fieldRange.from) &&
-                                            (match.range.from <= fieldRange.to || match.range.to <= fieldRange.to);
+                                                       (match.range.from <= fieldRange.to || match.range.to <= fieldRange.to);
 
                                     if(true == insideRange) // if group is even partially inside the range
                                     {
                                         tStringCoverageItem stringCoverageItem;
                                         stringCoverageItem.range = tIntRange( std::max(fieldRange.from, match.range.from) - fieldRange.from,
-                                                                           std::min( fieldRange.to, match.range.to ) - fieldRange.from );
+                                                                             std::min( fieldRange.to, match.range.to ) - fieldRange.from );
                                         stringCoverageItem.bAddSeparator = match.range.to > fieldRange.to;
                                         UMLDataItem.stringCoverageMap[it.key()] = stringCoverageItem;
                                     }
                                 }
 
-                                UMLInfo.UMLDataMap[UML_IDItem.first].push_back(UMLDataItem);
+                                pUMLInfo->UMLDataMap[UML_IDItem.first].push_back(UMLDataItem);
                             }
                             else // otherwise
                             {
                                 // let's directly assign custom client's value
                                 tUMLDataItem UMLDataItem;
-                                UMLDataItem.UML_Custom_Value = UML_IDItem.second.UML_Custom_Value;
-                                UMLInfo.UMLDataMap[UML_IDItem.first].push_back(UMLDataItem);
+                                UMLDataItem.pUML_Custom_Value = UML_IDItem.second.pUML_Custom_Value;
+                                pUMLInfo->UMLDataMap[UML_IDItem.first].push_back(UMLDataItem);
                             }
 
                             if(true == isReqResEv())
                             {
-                                UMLInfo.bContains_Req_Resp_Ev = true;
+                                pUMLInfo->bContains_Req_Resp_Ev = true;
                             }
                         }
                         else
@@ -1126,34 +1162,170 @@ tItemMetadata::tUpdateUMLInfoResult tItemMetadata::updateUMLInfo(const tFoundMat
     return result;
 }
 
+tItemMetadata::tUpdatePlotViewInfoResult
+tItemMetadata::updatePlotViewInfo(const tFoundMatches& foundMatches,
+                                  const tRegexScriptingMetadata& regexScriptingMetadata,
+                                  tTreeItemSharedPtr pTree)
+{
+    tUpdatePlotViewInfoResult result;
+
+    tRegexScriptingMetadata::tCheckIDs checkIDs;
+
+    for(const auto& match : foundMatches.foundMatchesVec)
+    {
+        checkIDs.insert(match.idx);
+    }
+
+    pPlotViewInfo = std::make_unique<tPlotViewInfo>();
+
+    // check if string matches all required UML attributes
+    pPlotViewInfo->bPlotViewConstraintsFulfilled = regexScriptingMetadata.doesContainConsistentPlotViewData(false, checkIDs, true).first;
+    pPlotViewInfo->plotViewDataMap.clear();
+
+    /*
+     * What should we fill in here?
+     * E.g. for the following string:
+     * {"TIMESTAMP": 1682268321.122626, "MODULE_NAME": "CPU_LOAD", "THREAD_ID": 281472591822624, "API_NAME": "MY_API", "CPU": 7.142857}
+     * With the following regex:
+     * (?<PXN_CPUC_Timestamp>(?<PYN_CPUC_CPUConsumption>{))"TIMESTAMP": (?<PXData_CPUC_1>([\d]+\.[\d]+)).*?
+     * "MODULE_NAME": .*?"CPU_LOAD".*API_NAME": "(?<PGN_CPUC>.*?)".*?"CPU": (?<PYData_CPUC_1>[\d]+\.[\d]+)
+     * We will need to fill in the following information:
+     * tPlotViewInfo( bPlotViewConstraintsFulfilled = true,
+     * plotViewDataMap( { ePlotViewID::PLOT_X_NAME, { eSearchResultColumn::Payload, {0, 0} },
+     *             { ePlotViewID::PLOT_Y_NAME, { eSearchResultColumn::Payload, {0, 0} },
+     *             { ePlotViewID::PLOT_X_DATA, { eSearchResultColumn::Payload, {15, 31} },
+     *             { ePlotViewID::PLOT_GRAPH_NAME, { eSearchResultColumn::Payload, {104, 109} },
+     *             { ePlotViewID::PLOT_Y_DATA, { eSearchResultColumn::Payload, {120, 127} } )
+     * );
+     */
+
+    auto pMatchesTree = pTree != nullptr ? pTree : getMatchesTree(foundMatches);
+
+    if(true == pPlotViewInfo->bPlotViewConstraintsFulfilled) // if UML matches are sufficient
+    {
+        if(nullptr != pMatchesTree)
+        {
+            auto preVisitFunction = [&regexScriptingMetadata, this](tTreeItem* pItem)
+            {
+                const auto& match = *(pItem->data(static_cast<int>(eTreeColumns::eTreeColumn_FoundMatch)).get<const tFoundMatch*>());
+
+                // for each tree element we should check, whether it is related to the plot view data representation.
+                // That can be done with checking each tree element against regexScriptingMetadata
+
+                // lambda, which checks whether specific match is representing a plot view data
+                auto isPlotViewData = [&match, &regexScriptingMetadata]()->std::pair<bool, tPlotViewIDParametersMap*>
+                {
+                    std::pair<bool, tPlotViewIDParametersMap*> res;
+                    res.first = false;
+
+                    auto groupIdx = match.idx;
+                    auto groups = regexScriptingMetadata.getItemsVec();
+
+                    if(groupIdx >= 0 && groupIdx < groups.size())
+                    {
+                        const auto& pGroupMetadata = groups[groupIdx];
+
+                        if(nullptr != pGroupMetadata &&
+                            ( false == pGroupMetadata->plotViewIDParameters.plotViewIDParametersMap.empty() ) )
+                        {
+                            res.first = true; // we got the UML data
+                            res.second = &pGroupMetadata->plotViewIDParameters.plotViewIDParametersMap;
+                        }
+                    }
+
+                    return res;
+                };
+
+                auto plotViewDataRes = isPlotViewData();
+
+                if(true == plotViewDataRes.first) // if we have a plot view data
+                {
+                    auto fillInFieldRanges = [this, &match](tPlotViewDataItem& plotViewDataItem)
+                    {
+                        //let's grab groups content
+                        for(auto it = fieldRanges.begin(); it != fieldRanges.end(); ++it)
+                        {
+                            const auto& fieldRange = *it;
+
+                            bool insideRange = (match.range.from >= fieldRange.from || match.range.to >= fieldRange.from) &&
+                                               (match.range.from <= fieldRange.to || match.range.to <= fieldRange.to);
+
+                            if(true == insideRange) // if group is even partially inside the range
+                            {
+                                tStringCoverageItem stringCoverageItem;
+                                stringCoverageItem.range = tIntRange( std::max(fieldRange.from, match.range.from) - fieldRange.from,
+                                                                     std::min( fieldRange.to, match.range.to ) - fieldRange.from );
+                                stringCoverageItem.bAddSeparator = match.range.to > fieldRange.to;
+                                plotViewDataItem.stringCoverageMap[it.key()] = stringCoverageItem;
+                            }
+                        }
+                    };
+
+                    auto fillInParameters = [this](tPlotViewDataItem& plotViewDataItem, const tPlotViewIDParametersMap::value_type& plotViewIDParametersMap)
+                    {
+                        plotViewDataItem.optColor = plotViewIDParametersMap.second.optColor;
+                        plotViewDataItem.pPlotViewGroupName = plotViewIDParametersMap.second.pPlotViewGroupName;
+                        plotViewDataItem.plotViewSplitParameters = plotViewIDParametersMap.second.plotViewSplitParameters;
+                        pPlotViewInfo->plotViewDataMap[plotViewIDParametersMap.first].push_back(plotViewDataItem);
+                    };
+
+                    for(const auto& plotViewIDParametersItem : *(plotViewDataRes.second))
+                    {
+                        tPlotViewDataItem plotViewDataItem;
+
+                        fillInFieldRanges(plotViewDataItem);
+                        fillInParameters(plotViewDataItem, plotViewIDParametersItem);
+                    }
+                }
+
+                return true;
+            };
+
+            pMatchesTree->visit(preVisitFunction, CTreeItem::tVisitFunction(), false, true, false);
+        }
+    }
+
+    result.pTreeItem = pMatchesTree;
+
+    return result;
+}
+
 //tFoundMatch
+
 tFoundMatch::tFoundMatch():
-pMatchStr(std::make_shared<QString>()),
+matchStr(),
 range(0,0),
-idx(0),
-msgSizeBytes(0u),
-timeStamp(0u),
-msgId(0)
+idx(0)
 {}
 
-tFoundMatch::tFoundMatch( const tQStringPtr& pMatchStr_,
+tFoundMatch::tFoundMatch( const QString& matchStr_,
                           const tIntRange& range_,
-                          const int& idx_,
-                          const unsigned int& msgSizeBytes_,
-                          const unsigned int& timeStamp_,
-                          const tMsgId& msgId_):
-pMatchStr((nullptr!=pMatchStr_)?pMatchStr_:std::make_shared<QString>()),
+                          const int& idx_):
+matchStr(matchStr_),
 range(range_),
-idx(idx_),
-msgSizeBytes(msgSizeBytes_),
-timeStamp(timeStamp_),
-msgId(msgId_)
+idx(idx_)
 {}
 
 bool tFoundMatch::operator< (const tFoundMatch& rhs) const
 {
-    return msgId < rhs.msgId;
+    Q_UNUSED(rhs);
+    return false;
 }
+
+//tFoundMatches
+tFoundMatches::tFoundMatches():
+timeStamp(0u),
+msgId(0),
+msgSizeBytes(0u)
+{}
+
+tFoundMatches::tFoundMatches(const std::uint32_t& msgSizeBytes_,
+                             const unsigned int& timeStamp_,
+                             const tMsgId& msgId_):
+timeStamp(timeStamp_),
+msgId(msgId_),
+msgSizeBytes(msgSizeBytes_)
+{}
 
 //tFoundMatchesPackItem
 tFoundMatchesPackItem::tFoundMatchesPackItem()
@@ -1163,8 +1335,8 @@ tFoundMatchesPackItem::tFoundMatchesPackItem()
 
 tFoundMatchesPackItem::tFoundMatchesPackItem( tItemMetadata&& itemMetadata_,
                                               tFoundMatches&& foundMatches_ ):
-  mItemMetadata(itemMetadata_),
-  mFoundMatches(foundMatches_)
+  mItemMetadata(std::move(itemMetadata_)),
+  mFoundMatches(std::move(foundMatches_))
 {
 }
 
@@ -1201,6 +1373,34 @@ matchedItemVec(matchedItemVec_)
 
 }
 
+int tFoundMatchesPack::findRowByMsgId(const tMsgId& msgIdToFind) const
+{
+    int left = 0;
+    int right = static_cast<int>(matchedItemVec.size()) - 1;
+
+    while (left <= right)
+    {
+        int mid = left + (right - left) / 2;
+        tMsgId midMsgId = matchedItemVec[mid]->getItemMetadata().msgId;
+
+        if (midMsgId == msgIdToFind)
+        {
+            return mid;
+        }
+        else if (midMsgId < msgIdToFind)
+        {
+            left = mid + 1;
+        }
+        else
+        {
+            right = mid - 1;
+        }
+    }
+
+    // Item not found
+    return -1;
+}
+
 QString getName(eSearchResultColumn val)
 {
     QString result;
@@ -1210,6 +1410,11 @@ QString getName(eSearchResultColumn val)
         case eSearchResultColumn::UML_Applicability:
         {
             result = "UML";
+        }
+            break;
+        case eSearchResultColumn::PlotView_Applicability:
+        {
+            result = "Plot";
         }
             break;
         case eSearchResultColumn::Apid:
@@ -1368,8 +1573,7 @@ bool tGroupedViewMetadata::operator== (const tGroupedViewMetadata& rhs) const
 tGroupedViewMetadata::tGroupedViewMetadata( const unsigned int timeStamp_, const tMsgId& msgId_ ):
 timeStamp(timeStamp_),
 msgId(msgId_)
-{
-}
+{}
 
 QString getName(eGroupedViewColumn val)
 {
@@ -1598,7 +1802,10 @@ bool tHighlightingGradient::operator!=(const tHighlightingGradient& rhs) const
     return !( *this == rhs );
 }
 
-tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bool bParseUMLData )
+tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName,
+                                                    bool bParseUMLData,
+                                                    bool bParsePlotViewData,
+                                                    bool /* bParseGroupedViewData */ )
 {
 #if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
     QStringList splitGroupName = groupName.split(sRegexScriptingDelimiter,
@@ -1617,33 +1824,6 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
     static const QRegularExpression rgbRegex(rgbRegexStr, QRegularExpression::CaseInsensitiveOption);
     static const QString varRegexStr( QString("%1([\\w\\d]+)").arg(sVARPrefix) );
     static const QRegularExpression varRegex(varRegexStr, QRegularExpression::CaseInsensitiveOption);
-
-    auto createUMLRegexStr = [](  ) -> QString
-    {
-        QString resultRegex("^(");
-
-        auto finalIter = s_UML_IDs_Map.end();
-        --finalIter;
-
-        for( auto it = s_UML_IDs_Map.begin(); it != s_UML_IDs_Map.end(); ++it )
-        {
-            const auto& UML_IDs_MapItem = *it;
-
-            resultRegex.append(UML_IDs_MapItem.second.id_str);
-
-            if(it != finalIter)
-            {
-                resultRegex.append("|");
-            }
-        }
-
-        resultRegex.append(QString(")[%1]{0,1}([\\w\\d]*)$").arg(s_UML_ALIAS_DELIMITER));
-
-        return resultRegex;
-    };
-
-    static const QString UMLRegexStr = createUMLRegexStr();
-    static const QRegularExpression UMLRegex(UMLRegexStr, QRegularExpression::CaseInsensitiveOption);
 
     auto normalizeRGBItem = [](const int& rgbItem)->int
     {
@@ -1672,6 +1852,8 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
     optVarName.first = false;
 
     tOptional_UML_ID optUML_ID;
+
+    tPlotViewIDParameters plotViewIDParameters;
 
     for( const auto& groupNamePart : splitGroupName )
     {
@@ -1747,7 +1929,7 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
                      && true == bBlueParsed)
                     {
                         optColor.isSet = true;
-                        optColor.color = QColor(red, green, blue);
+                        optColor.color_code = QColor(red, green, blue).rgb();
                     }
                 }
             }
@@ -1755,12 +1937,14 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
             {
                 QString lowerGroupNamePart = groupNamePart.toLower();
 
-                auto foundColor = sColorsMap.find(lowerGroupNamePart);
+                const auto& colorsMap = getColorsMap();
 
-                if(sColorsMap.end() != foundColor)
+                auto foundColor = colorsMap.find(lowerGroupNamePart);
+
+                if(colorsMap.end() != foundColor)
                 {
                     optColor.isSet = true;
-                    optColor.color = foundColor->second;
+                    optColor.color_code = foundColor->second.rgb();
                 }
             }
         }
@@ -1772,7 +1956,7 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
 
             if(varMatch.hasMatch())
             {
-                bool scriptedVarFound = varMatch.lastCapturedIndex() == 1;           // if 1 group found
+                bool scriptedVarFound = varMatch.lastCapturedIndex() == 1; // if 1 group found
 
                 if(true == scriptedVarFound)
                 {
@@ -1785,11 +1969,38 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
         if(true == bParseUMLData)
         {
             // parse UML data
+            auto createUMLRegexStr = [](  ) -> QString
+            {
+                QString resultRegex("^(");
+
+                auto finalIter = s_UML_IDs_Map.end();
+                --finalIter;
+
+                for( auto it = s_UML_IDs_Map.begin(); it != s_UML_IDs_Map.end(); ++it )
+                {
+                    const auto& UML_IDs_MapItem = *it;
+
+                    resultRegex.append(UML_IDs_MapItem.second.id_str);
+
+                    if(it != finalIter)
+                    {
+                        resultRegex.append("|");
+                    }
+                }
+
+                resultRegex.append(QString(")[%1]{0,1}([\\w\\d]*)$").arg(s_UML_ALIAS_DELIMITER));
+
+                return resultRegex;
+            };
+
+            static const QString UMLRegexStr = createUMLRegexStr();
+            static const QRegularExpression UMLRegex(UMLRegexStr, QRegularExpression::CaseInsensitiveOption);
+
             QRegularExpressionMatch varMatch = UMLRegex.match(groupNamePart);
 
             if(varMatch.hasMatch())
             {
-                bool b_UML_ID_Found = varMatch.lastCapturedIndex() >= 1;               // if 1 or more groups found
+                bool b_UML_ID_Found = varMatch.lastCapturedIndex() >= 1; // if 1 or more groups found
 
                 if(true == b_UML_ID_Found)
                 {
@@ -1799,16 +2010,56 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
                     if(true == bUML_ID_Parsed)
                     {
                         const auto& key = UML_ID;
-                        auto& value = optUML_ID.optional_UML_IDMap[key].UML_Custom_Value;
+                        auto& pValue = optUML_ID.optional_UML_IDMap[key].pUML_Custom_Value;
 
                         if(varMatch.lastCapturedIndex() == 2) // if 2 groups found
                         {
                             QString capturedString = varMatch.captured(2);
-                            bool b_UML_Custom_Value_Found = false == capturedString.isEmpty();     // if 2 groups found
+                            bool b_UML_Custom_Value_Found = false == capturedString.isEmpty(); // if 2 groups found
 
                             if(true == b_UML_Custom_Value_Found)
                             {
-                                value = capturedString;
+                                pValue = std::make_shared<QString>(capturedString);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if(true == bParsePlotViewData)
+        {
+            // parse plot data
+            static const QRegularExpression plotViewRegex = createPlotViewRegex();
+
+            QRegularExpressionMatch varMatch = plotViewRegex.match(groupNamePart);
+
+            if(varMatch.hasMatch())
+            {
+                bool b_PlotView_ID_Found = varMatch.lastCapturedIndex() >= 1; // if 1 or more groups found
+
+                if(true == b_PlotView_ID_Found)
+                {
+                    ePlotViewID plotView_ID = ePlotViewID::PLOT_AXIS_RECTANGLE_TYPE; // any value
+                    bool bPlotView_ID_Parsed = parsePlotViewIDFromString( varMatch.captured(1), plotView_ID );
+
+                    if(true == bPlotView_ID_Parsed)
+                    {
+                        const auto& key = plotView_ID;
+                        plotViewIDParameters.plotViewIDParametersMap[key].pPlotViewGroupName = std::make_shared<QString>(groupName);
+
+                        if(varMatch.lastCapturedIndex() == 2) // if 2 groups found
+                        {
+                            QString parameters = varMatch.captured(2);
+                            bool b_PlotView_Parameters_Found = false == parameters.isEmpty(); // if 2 groups found
+
+                            if(true == b_PlotView_Parameters_Found)
+                            {
+                                auto splitParameters = splitPlotViewParameters(parameters);
+                                for(const auto& splitParameter : splitParameters)
+                                {
+                                        plotViewIDParameters.plotViewIDParametersMap[key].plotViewSplitParameters.push_back(std::make_shared<QString>(splitParameter));
+                                }
                             }
                         }
                     }
@@ -1817,16 +2068,83 @@ tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bo
         }
     }
 
+    for(auto& pair : plotViewIDParameters.plotViewIDParametersMap)
+    {
+        pair.second.optColor = optColor;
+    }
+
     tRegexScriptingMetadataItemPtr pItem = std::make_shared<tRegexScriptingMetadataItem>();
     pItem->highlightingColor = optColor;
     pItem->varName = optVarName;
     pItem->optionalUML_ID = optUML_ID;
+    pItem->plotViewIDParameters = plotViewIDParameters;
 
     return pItem;
 }
 
+tGroupedViewIdx parseRegexGroupedViewIndices( const QString& groupName,
+                                              bool bParseGroupedViewData )
+{
+    tGroupedViewIdx result = sInvalidGroupedViewIdx;
+
+#if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
+    QStringList splitGroupName = groupName.split(sRegexScriptingDelimiter,
+                                                 QString::SplitBehavior::SkipEmptyParts,
+                                                 Qt::CaseInsensitive);
+#else
+    QStringList splitGroupName = groupName.split(sRegexScriptingDelimiter,
+                                                 Qt::SkipEmptyParts,
+                                                 Qt::CaseInsensitive);
+#endif
+
+    static const QString groupedViewIdxStr( QString("^%1_([\\d]+)$").arg(sGroupedViewPrefix) );
+    static const QRegularExpression groupedViewIdxRegex(groupedViewIdxStr, QRegularExpression::CaseInsensitiveOption);
+    static const QString groupedViewStr( QString("^%1$").arg(sGroupedViewPrefix) );
+    static const QRegularExpression groupedViewRegex(groupedViewStr, QRegularExpression::CaseInsensitiveOption);
+
+    if(bParseGroupedViewData)
+    {
+        for( const auto& groupNamePart : splitGroupName )
+        {
+            // parse grouped view data
+            QRegularExpressionMatch groupedViewIdxMatch = groupedViewIdxRegex.match(groupNamePart);
+
+            if(groupedViewIdxMatch.hasMatch())
+            {
+                bool groupedViewIdxFound = groupedViewIdxMatch.lastCapturedIndex() == 1; // if 1 group found
+
+                if(true == groupedViewIdxFound)
+                {
+                    bool bGroupIdxParsed = false;
+                    int groupIdx = 0;
+                    groupIdx = groupedViewIdxMatch.captured(1).toInt(&bGroupIdxParsed);
+
+                    if(bGroupIdxParsed)
+                    {
+                        result = groupIdx;
+                    }
+                }
+            }
+            else
+            {
+                QRegularExpressionMatch groupedViewMatch = groupedViewRegex.match(groupNamePart);
+
+                if(groupedViewMatch.hasMatch())
+                {
+                    result = sMaxGroupedViewIdx;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 //tRegexScriptingMetadata
-bool tRegexScriptingMetadata::parse(const QRegularExpression& regex, bool bParseUMLData)
+bool tRegexScriptingMetadata::parse(const QRegularExpression& regex,
+                                    bool bParseUMLData,
+                                    bool bParsePlotViewData,
+                                    bool bParseGroupedViewData)
 {
     bool bResult = true;
 
@@ -1834,9 +2152,36 @@ bool tRegexScriptingMetadata::parse(const QRegularExpression& regex, bool bParse
     {
         auto groupNames = regex.namedCaptureGroups();
 
-        for(const auto& groupName : groupNames)
+        int groupCounter = 0;
+        typedef std::multimap<tGroupedViewIdx /*specified grouped view ordering*/, int /*regex group index*/> tSortingMap;
+        tSortingMap sortingMap;
+
+        for(auto it = groupNames.begin(); it != groupNames.end(); ++it)
         {
-            mItemsVec.push_back(parseRegexGroupName(groupName, bParseUMLData));
+            const auto& groupName = *it;
+
+            mItemsVec.push_back(parseRegexGroupName(groupName,
+                                                    bParseUMLData,
+                                                    bParsePlotViewData,
+                                                    bParseGroupedViewData));
+
+            auto parsedIndex = parseRegexGroupedViewIndices(groupName, bParseGroupedViewData);
+
+            if(parsedIndex != sInvalidGroupedViewIdx)
+            {
+                sortingMap.insert(std::make_pair(parsedIndex, groupCounter));
+            }
+
+            ++groupCounter;
+        }
+
+        mGroupedViewIndexes.clear();
+
+        groupCounter = 0;
+        for(const auto& pair : sortingMap)
+        {
+            mGroupedViewIndexes.insert(std::make_pair(pair.second, groupCounter));
+            ++groupCounter;
         }
     }
     else
@@ -1852,27 +2197,28 @@ const tRegexScriptingMetadataItemPtrVec& tRegexScriptingMetadata::getItemsVec() 
     return mItemsVec;
 }
 
-std::pair<bool /*status*/, QString /*status description*/>
+tRegexScriptingMetadata::tStatusPair
 tRegexScriptingMetadata::doesContainConsistentUMLData(bool fillInStringMsg) const
 {
     return doesContainConsistentUMLData(fillInStringMsg, tCheckIDs(), true);
 }
 
-std::pair<bool /*status*/, QString /*status description*/>
+tRegexScriptingMetadata::tStatusPair
 tRegexScriptingMetadata::doesContainConsistentUMLData(bool fillInStringMsg, const tCheckIDs& checkIDs) const
 {
     return doesContainConsistentUMLData(fillInStringMsg, checkIDs, false);
 }
 
-std::pair<bool /*status*/, QString /*status description*/>
+tRegexScriptingMetadata::tStatusPair
 tRegexScriptingMetadata::doesContainConsistentUMLData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool bCheckAll) const
 {
     std::pair<bool /*status*/, QString /*status description*/> result;
+
     result.first = false;
 
     if(true == fillInStringMsg)
     {
-        result.second.append("UML parsing result: ");
+        result.second.append("UML parsing result:");
     }
 
     if(false == bCheckAll && true == checkIDs.empty())
@@ -1927,7 +2273,7 @@ tRegexScriptingMetadata::doesContainConsistentUMLData(bool fillInStringMsg, cons
 
                             if(true == mandatoryUMLElements.empty())
                             {
-                                break;
+                                    break;
                             }
                         }
                     }
@@ -2028,7 +2374,7 @@ tRegexScriptingMetadata::doesContainConsistentUMLData(bool fillInStringMsg, cons
         }
     }
 
-        return result;
+    return result;
 }
 
 bool tRegexScriptingMetadata::doesContainAnyUMLGroup() const
@@ -2055,6 +2401,245 @@ bool tRegexScriptingMetadata::doesContainAnyUMLGroup() const
     return bResult;
 }
 
+tRegexScriptingMetadata::tStatusPair
+tRegexScriptingMetadata::doesContainConsistentPlotViewData(bool fillInStringMsg, bool checkParameters) const
+{
+    return doesContainConsistentPlotViewData(fillInStringMsg, tCheckIDs(), true, checkParameters);
+}
+
+tRegexScriptingMetadata::tStatusPair
+tRegexScriptingMetadata::doesContainConsistentPlotViewData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool checkParameters) const
+{
+    return doesContainConsistentPlotViewData(fillInStringMsg, checkIDs, false, checkParameters);
+}
+
+tRegexScriptingMetadata::tStatusPair
+tRegexScriptingMetadata::doesContainConsistentPlotViewData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool bCheckAll, bool checkParameters) const
+{
+    std::pair<bool /*status*/, QString /*status description*/> result;
+    result.first = false;
+
+    if(true == fillInStringMsg)
+    {
+        result.second.append("Plot view parsing result:");
+    }
+
+    if(false == bCheckAll && true == checkIDs.empty())
+    {
+        if(true == fillInStringMsg)
+        {
+            result.second.append("No groups available. Result is \"false\"");
+        }
+    }
+    else
+    {
+        tRegexScriptingMetadataItemPtrVec iterationVec;
+
+        if(true == bCheckAll)
+        {
+            iterationVec = mItemsVec;
+        }
+        else
+        {
+            for(const auto& checkId : checkIDs)
+            {
+                if(checkId >= 0 && checkId < mItemsVec.size())
+                {
+                    iterationVec.push_back(mItemsVec[checkId]);
+                }
+            }
+        }
+
+        auto checkMandatoryElements = [&iterationVec, &fillInStringMsg]( ePlotViewIDType parameterType, QString& msg ) -> bool
+        {
+            bool bResult = false;
+
+            tPlotViewIDsMap mandatoryElements;
+
+            for(const auto& element : sPlotViewIDsMap)
+            {
+                if(element.second.id_type == parameterType)
+                {
+                    mandatoryElements.insert(std::make_pair(element.first, element.second));
+                }
+            }
+
+            for(const auto& pElement : iterationVec)
+            {
+                if(nullptr != pElement)
+                {
+                    if(false == pElement->plotViewIDParameters.plotViewIDParametersMap.empty())
+                    {
+                        for(const auto& PlotView_IDItem : pElement->plotViewIDParameters.plotViewIDParametersMap)
+                        {
+                            auto foundElement = mandatoryElements.find(PlotView_IDItem.first);
+
+                            if(foundElement != mandatoryElements.end())
+                            {
+                                mandatoryElements.erase(foundElement);
+
+                                if(true == mandatoryElements.empty())
+                                {
+                                    bResult = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(false == mandatoryElements.empty())
+            {
+                bResult = false;
+
+                if(true == fillInStringMsg)
+                {
+                    // collect warning string
+                    for(const auto& element : mandatoryElements)
+                    {
+                        msg.append(QString(" <Mandatory element %1 not found>").arg(getPlotIDAsString(element.first)));
+                    }
+                }
+            }
+
+            return bResult;
+        };
+
+        auto checkAllParameters = [&iterationVec, &fillInStringMsg](QString& msg) -> bool
+        {
+            bool bResult = true;
+
+            for(const auto& pElement : iterationVec)
+            {
+                if(nullptr != pElement)
+                {
+                    if(false == pElement->plotViewIDParameters.plotViewIDParametersMap.empty())
+                    {
+                        bool bCheckParametersTmp = checkPlotViewParameters(msg, fillInStringMsg, pElement->plotViewIDParameters.plotViewIDParametersMap);
+
+                        if(true == bResult)
+                        {
+                            bResult = bCheckParametersTmp;
+                        }
+                    }
+                }
+            }
+
+            return bResult;
+        };
+
+        auto uniqueAvailableAxisTypes = getUniqueAvailableAxisTypes();
+
+        if(uniqueAvailableAxisTypes.find(ePlotViewAxisType::e_GANTT) != uniqueAvailableAxisTypes.end())
+        {
+            bool bMandatoryGanttParametersCheck = checkMandatoryElements(ePlotViewIDType::e_Mandatory_Gantt, result.second);
+            bool bMandatoryNonGanttParametersCheck = true;
+
+            if(uniqueAvailableAxisTypes.size() > 1)
+            {
+                bMandatoryNonGanttParametersCheck = checkMandatoryElements(ePlotViewIDType::e_Mandatory_Non_Gantt, result.second);
+            }
+
+            if(true == checkParameters)
+            {
+                bool bCheckParameters = checkAllParameters(result.second);
+                result.first = ( bMandatoryGanttParametersCheck && bCheckParameters ) || ( bMandatoryNonGanttParametersCheck && bCheckParameters );
+            }
+            else
+            {
+                result.first = bMandatoryGanttParametersCheck || bMandatoryNonGanttParametersCheck;
+            }
+        }
+        else if(false == uniqueAvailableAxisTypes.empty())
+        {
+            bool bMandatoryNonGanttParametersCheck = checkMandatoryElements(ePlotViewIDType::e_Mandatory_Non_Gantt, result.second);
+
+            if(true == checkParameters)
+            {
+                bool bCheckParameters = checkAllParameters(result.second);
+                result.first = bMandatoryNonGanttParametersCheck && bCheckParameters;
+            }
+            else
+            {
+                result.first = bMandatoryNonGanttParametersCheck;
+            }
+        }
+    }
+
+    return result;
+}
+
+bool tRegexScriptingMetadata::doesContainAnyPlotViewGroup() const
+{
+    bool bResult = false;
+
+    for(const auto& element : mItemsVec)
+    {
+        if(false == element->plotViewIDParameters.plotViewIDParametersMap.empty())
+        {
+            for(const auto& UML_IDItem : element->plotViewIDParameters.plotViewIDParametersMap)
+            {
+                auto foundElement = sPlotViewIDsMap.find(UML_IDItem.first);
+
+                if(foundElement != sPlotViewIDsMap.end()) // match found
+                {
+                    bResult = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return bResult;
+}
+
+const tGroupedViewIndices& tRegexScriptingMetadata::getGroupedViewIndices() const
+{
+    return mGroupedViewIndexes;
+}
+
+std::set<ePlotViewAxisType> sAllAxisTypes =
+{
+    ePlotViewAxisType::e_GANTT,
+    ePlotViewAxisType::e_LINEAR,
+    ePlotViewAxisType::e_POINT
+};
+
+std::set<ePlotViewAxisType> tRegexScriptingMetadata::getUniqueAvailableAxisTypes() const
+{
+    std::set<ePlotViewAxisType> result;
+
+    for(const auto& item : mItemsVec)
+    {
+        const auto& optionalPlot_IDMap = item->plotViewIDParameters.plotViewIDParametersMap;
+        auto foundItem = optionalPlot_IDMap.find(ePlotViewID::PLOT_AXIS_RECTANGLE_TYPE);
+        if(foundItem != optionalPlot_IDMap.end())
+        {
+            ePlotViewAxisType axisType = ePlotViewAxisType::e_LINEAR;
+            auto parameterIndex = getPlotViewParameterIndex(ePlotViewID::PLOT_AXIS_RECTANGLE_TYPE, "axisRectType");
+
+            if(parameterIndex >= 0 && parameterIndex <= static_cast<int32_t>(foundItem->second.plotViewSplitParameters.size() - 1) )
+            {
+                assert(foundItem->second.plotViewSplitParameters[parameterIndex] != nullptr);
+                if(true == parseAxisTypeFromString(*foundItem->second.plotViewSplitParameters[parameterIndex], axisType))
+                {
+                    result.insert(axisType);
+                    if(result == sAllAxisTypes)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if(true == result.empty())
+    {
+        result.insert(ePlotViewAxisType::e_LINEAR);
+    }
+
+    return result;
+}
 //////////////////////////////////////////////////////////
 
 Qt::CheckState V_2_CS( const tDataItem& val )
@@ -2101,9 +2686,9 @@ QVariant toQVariant(const tDataItem& item)
     {
         result.setValue(item.get<tGroupedViewMetadata>());
     }
-    else if(item.index() == tDataItem::index_of<tIntRangePtrWrapper>())
+    else if(item.index() == tDataItem::index_of<tIntRange>())
     {
-        result.setValue(item.get<tIntRangePtrWrapper>());
+        result.setValue(item.get<tIntRange>());
     }
     else if(item.index() == tDataItem::index_of<tFoundMatch*>())
     {
@@ -2192,11 +2777,6 @@ tDataItem toRegexDataItem(const QVariant& variant, const eRegexFiltersColumn& co
     return result;
 }
 
-bool QOptionalColor::operator== ( const QOptionalColor& rhs ) const
-{
-    return color == rhs.color && isSet == rhs.isSet;
-}
-
 bool tColorWrapper::operator< ( const tColorWrapper& rhs ) const
 {
     bool bResult;
@@ -2207,27 +2787,27 @@ bool tColorWrapper::operator< ( const tColorWrapper& rhs ) const
     }
     else
     {
-        if( optColor.color.red() < rhs.optColor.color.red() )
+        if( qRed(optColor.color_code) < qRed(rhs.optColor.color_code) )
         {
             bResult = true;
         }
-        else if( optColor.color.red() > rhs.optColor.color.red() )
+        else if( qRed(optColor.color_code) > qRed(rhs.optColor.color_code) )
         {
             bResult = false;
         }
         else
         {
-            if( optColor.color.green() < rhs.optColor.color.green() )
+            if( qGreen(optColor.color_code) < qGreen(rhs.optColor.color_code) )
             {
                 bResult = true;
             }
-            else if( optColor.color.green() > rhs.optColor.color.green() )
+            else if( qGreen(optColor.color_code) > qGreen(rhs.optColor.color_code) )
             {
                 bResult = false;
             }
             else
             {
-                if( optColor.color.blue() < rhs.optColor.color.blue() )
+                if( qBlue(optColor.color_code) < qBlue(rhs.optColor.color_code) )
                 {
                     bResult = true;
                 }
@@ -2246,7 +2826,6 @@ bool tColorWrapper::operator== ( const tColorWrapper& rhs ) const
 {
     return optColor == rhs.optColor;
 }
-
 
 QString rgb2hex(const QColor& color, bool with_head)
 {
@@ -2350,7 +2929,7 @@ QString getPathModeAsString(const ePathMode& val)
     return result;
 }
 
-bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFilePath )
+bool convertLogFileToDLTV1( const QString& sourceFilePath, const QString& targetFilePath )
 {
     bool bResult = true;
 
@@ -2373,41 +2952,51 @@ bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFi
                                 &messageIndex,
                                 &timer](const QString& str)
             {
+                uint16_t storageHeaderSize = 0u;
+
+                auto elapsedNsecs = timer.nsecsElapsed();
+
+                auto elapsedSeconds = static_cast<uint32_t>(elapsedNsecs / 1000000000);
+                auto elapsedMicroSeconds = static_cast<uint32_t>(elapsedNsecs % 1000000000 / 1000);
+
+                auto currentMSecsSinceEpoch = QDateTime::currentMSecsSinceEpoch();
+                auto currentSecsSinceEpoch = currentMSecsSinceEpoch / 1000;
+                auto currentMicroSecsSinceEpoch = currentMSecsSinceEpoch % 1000 * 1000;
+
                 QByteArray data;
 
                 {
-                    // storage header
+                    // STORAGE HEADER
+
                     data.push_back(0x44); // D
                     data.push_back(0x4c); // L
                     data.push_back(0x54); // T
                     data.push_back(0x01);
 
-                    auto elapsedMs = timer.elapsed();
+                    uint8_t currentSecsSinceEpoch_1_byte = currentSecsSinceEpoch & 0xff;
+                    uint8_t currentSecsSinceEpoch_2_byte = (currentSecsSinceEpoch >> 8);
+                    uint8_t currentSecsSinceEpoch_3_byte = (currentSecsSinceEpoch >> 16);
+                    uint8_t currentSecsSinceEpoch_4_byte = (currentSecsSinceEpoch >> 24);
+                    data.push_back( currentSecsSinceEpoch_1_byte );
+                    data.push_back( currentSecsSinceEpoch_2_byte );
+                    data.push_back( currentSecsSinceEpoch_3_byte );
+                    data.push_back( currentSecsSinceEpoch_4_byte );
 
-                    auto elapsedSeconds = static_cast<uint32_t>(elapsedMs / 1000);
-                    uint8_t elapsedSeconds_1_byte = elapsedSeconds & 0xff;
-                    uint8_t elapsedSeconds_2_byte = (elapsedSeconds >> 8);
-                    uint8_t elapsedSeconds_3_byte = (elapsedSeconds >> 16);
-                    uint8_t elapsedSeconds_4_byte = (elapsedSeconds >> 24);
-                    data.push_back( elapsedSeconds_4_byte );
-                    data.push_back( elapsedSeconds_3_byte );
-                    data.push_back( elapsedSeconds_2_byte );
-                    data.push_back( elapsedSeconds_1_byte );
-
-                    auto elapsedMicroSeconds = static_cast<uint32_t>(elapsedMs % 1000 * 1000);
-                    uint8_t elapsedMicroSeconds_1_byte = elapsedMicroSeconds & 0xff;
-                    uint8_t elapsedMicroSeconds_2_byte = (elapsedMicroSeconds >> 8);
-                    uint8_t elapsedMicroSeconds_3_byte = (elapsedMicroSeconds >> 16);
-                    uint8_t elapsedMicroSeconds_4_byte = (elapsedMicroSeconds >> 24);
-                    data.push_back( elapsedMicroSeconds_4_byte );
-                    data.push_back( elapsedMicroSeconds_3_byte );
-                    data.push_back( elapsedMicroSeconds_2_byte );
-                    data.push_back( elapsedMicroSeconds_1_byte );
+                    uint8_t currentMicroSecsSinceEpoch_1_byte = currentMicroSecsSinceEpoch & 0xff;
+                    uint8_t currentMicroSecsSinceEpoch_2_byte = (currentMicroSecsSinceEpoch >> 8);
+                    uint8_t currentMicroSecsSinceEpoch_3_byte = (currentMicroSecsSinceEpoch >> 16);
+                    uint8_t currentMicroSecsSinceEpoch_4_byte = (currentMicroSecsSinceEpoch >> 24);
+                    data.push_back( currentMicroSecsSinceEpoch_1_byte );
+                    data.push_back( currentMicroSecsSinceEpoch_2_byte );
+                    data.push_back( currentMicroSecsSinceEpoch_3_byte );
+                    data.push_back( currentMicroSecsSinceEpoch_4_byte );
 
                     data.push_back('E');
                     data.push_back('C');
                     data.push_back('U');
                     data.push_back('1');
+
+                    storageHeaderSize = data.size();
                 }
 
                 {
@@ -2415,14 +3004,14 @@ bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFi
 
                     // 0 byte: HTYP
                     char HTYP = 0u;
-                    HTYP |= 1UL;         // use extended header
-                    HTYP &= ~(1UL << 1); // Most Significant Byte First
-                    HTYP |= 1UL << 2;    // With ECU ID
-                    HTYP |= 1UL << 3;    // With Session ID
-                    HTYP |= 1UL << 4;    // With Timestamp
-                    HTYP &= ~(1UL << 5); // Version
-                    HTYP |= ~(1UL << 6); // Version
-                    HTYP |= ~(1UL << 7); // Version
+                    HTYP |= 1UL;            // use extended header
+                    HTYP &= ~(1UL << 1);    // Most Significant Byte First
+                    HTYP |= 1UL << 2;       // With ECU ID
+                    HTYP |= 1UL << 3;       // With Session ID
+                    HTYP |= 1UL << 4;       // With Timestamp
+                    HTYP |=  ( 1UL << 5 );  // Version
+                    HTYP &= ~( 1UL << 6 );  // Version
+                    HTYP &= ~( 1UL << 7 );  // Version
                     data.push_back(HTYP);
 
                     // 1 byte: MCNT
@@ -2450,8 +3039,8 @@ bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFi
                     data.push_back( sessionId_2_byte );
                     data.push_back( sessionId_1_byte );
 
-                    // 12-15 bytes: TMSP
-                    uint32_t timestamp = messageIndex;
+                    // 12-15 bytes: TMSP. Measured in 0.1 ms
+                    uint32_t timestamp = elapsedSeconds * 10000 + elapsedMicroSeconds / 100;
                     uint8_t timestamp_1_byte = timestamp & 0xff;
                     uint8_t timestamp_2_byte = (timestamp >> 8);
                     uint8_t timestamp_3_byte = (timestamp >> 16);
@@ -2497,57 +3086,54 @@ bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFi
                     // PAYLOAD
 
                     // 0-4 bytes: ARG1 Type Info
-                    uint8_t typeInfo = 0u;
+                    uint8_t typeInfo_byte_1 = 0u;
 
-                    typeInfo &= ~(1UL);       // Reserved
-                    typeInfo &= ~(1UL << 1);  // Reserved
-                    typeInfo &= ~(1UL << 2);  // Reserved
-                    typeInfo &= ~(1UL << 3);  // Reserved
-                    typeInfo &= ~(1UL << 4);  // Reserved
-                    typeInfo &= ~(1UL << 5);  // Reserved
-                    typeInfo &= ~(1UL << 6);  // Reserved
-                    typeInfo &= ~(1UL << 7);  // Reserved
+                    typeInfo_byte_1 &= ~(1UL);       // Type length
+                    typeInfo_byte_1 &= ~(1UL << 1);  // Type length
+                    typeInfo_byte_1 &= ~(1UL << 2);  // Type length
+                    typeInfo_byte_1 &= ~(1UL << 3);  // Type length
+                    typeInfo_byte_1 &= ~(1UL << 4);  // Bool
+                    typeInfo_byte_1 &= ~(1UL << 5);  // SINT
+                    typeInfo_byte_1 &= ~(1UL << 6);  // UINT
+                    typeInfo_byte_1 &= ~(1UL << 7);  // FLOAT
 
-                    data.push_back(typeInfo);
+                    uint8_t typeInfo_byte_2 = 0u;
 
-                    typeInfo = 0u;
+                    typeInfo_byte_2 &= ~(1UL);       // ARAY
+                    typeInfo_byte_2 |= (1UL << 1);   // STRG
+                    typeInfo_byte_2 &= ~(1UL << 2);  // RAWD
+                    typeInfo_byte_2 &= ~(1UL << 3);  // VARI
+                    typeInfo_byte_2 &= ~(1UL << 4);  // FIXP
+                    typeInfo_byte_2 &= ~(1UL << 5);  // TRAI
+                    typeInfo_byte_2 &= ~(1UL << 6);  // STRU
+                    typeInfo_byte_2 |= (1UL << 7);   // SCOD
 
-                    typeInfo &= ~(1UL);       // SCOD
-                    typeInfo &= ~(1UL << 1);  // SCOD
-                    typeInfo &= ~(1UL << 2);  // Reserved
-                    typeInfo &= ~(1UL << 3);  // Reserved
-                    typeInfo &= ~(1UL << 4);  // Reserved
-                    typeInfo &= ~(1UL << 5);  // Reserved
-                    typeInfo &= ~(1UL << 6);  // Reserved
-                    typeInfo &= ~(1UL << 7);  // Reserved
+                    uint8_t typeInfo_byte_3 = 0u;
 
-                    data.push_back(typeInfo);
+                    typeInfo_byte_3 &= ~(1UL);       // SCOD
+                    typeInfo_byte_3 &= ~(1UL << 1);  // SCOD
+                    typeInfo_byte_3 &= ~(1UL << 2);  // Reserved
+                    typeInfo_byte_3 &= ~(1UL << 3);  // Reserved
+                    typeInfo_byte_3 &= ~(1UL << 4);  // Reserved
+                    typeInfo_byte_3 &= ~(1UL << 5);  // Reserved
+                    typeInfo_byte_3 &= ~(1UL << 6);  // Reserved
+                    typeInfo_byte_3 &= ~(1UL << 7);  // Reserved
 
-                    typeInfo = 0u;
+                    uint8_t typeInfo_byte_4 = 0u;
 
-                    typeInfo &= ~(1UL);       // ARAY
-                    typeInfo |= (1UL << 1);   // STRG
-                    typeInfo &= ~(1UL << 2);  // RAWD
-                    typeInfo &= ~(1UL << 3);  // VARI
-                    typeInfo &= ~(1UL << 4);  // FIXP
-                    typeInfo &= ~(1UL << 5);  // TRAI
-                    typeInfo &= ~(1UL << 6);  // STRU
-                    typeInfo |= (1UL << 7);   // SCOD
+                    typeInfo_byte_4 &= ~(1UL);       // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 1);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 2);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 3);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 4);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 5);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 6);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 7);  // Reserved
 
-                    data.push_back(typeInfo);
-
-                    typeInfo = 0u;
-
-                    typeInfo &= ~(1UL);       // Type length
-                    typeInfo &= ~(1UL << 1);  // Type length
-                    typeInfo &= ~(1UL << 2);  // Type length
-                    typeInfo &= ~(1UL << 2);  // Type length
-                    typeInfo &= ~(1UL << 3);  // Bool
-                    typeInfo &= ~(1UL << 4);  // SINT
-                    typeInfo &= ~(1UL << 5);  // UINT
-                    typeInfo &= ~(1UL << 6);  // FLOAT
-
-                    data.push_back(typeInfo);
+                    data.push_back(typeInfo_byte_1);
+                    data.push_back(typeInfo_byte_2);
+                    data.push_back(typeInfo_byte_3);
+                    data.push_back(typeInfo_byte_4);
 
                     // ARG1 Payload
                     QString strCopy = str;
@@ -2560,14 +3146,12 @@ bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFi
                     uint16_t strLength = strCopy.size();
                     uint8_t strLength_low = strLength & 0xff;
                     uint8_t strLength_high = (strLength >> 8);
-                    data.push_back(strLength_high);
                     data.push_back(strLength_low);
+                    data.push_back(strLength_high);
 
-                    data.append(strCopy);
+                    data.append(strCopy.toUtf8());
 
                     // 2-3 bytes: LEN - at last, set the data length.
-                    uint16_t storageHeaderSize = 16;
-
                     uint16_t dataSize = data.size() - storageHeaderSize;
                     dataSize = DLT_SWAP_16(dataSize);
                     uint8_t dataSize_low = dataSize & 0xff;
@@ -2593,21 +3177,498 @@ bool convertLogFileToDLT( const QString& sourceFilePath, const QString& targetFi
         else
         {
             SEND_ERR(QString("Failed to open file \"%1\". Error: \"%2\"")
-                     .arg(targetFilePath)
-                     .arg(targetFile.errorString()));
+                         .arg(targetFilePath)
+                         .arg(targetFile.errorString()));
             bResult = false;
         }
     }
     else
     {
         SEND_ERR(QString("Failed to open file \"%1\". Error: \"%2\"")
-                 .arg(sourceFilePath)
-                 .arg(sourceFile.errorString()));
+                     .arg(sourceFilePath)
+                     .arg(sourceFile.errorString()));
         bResult = false;
     }
 
     return bResult;
 }
+
+bool convertLogFileToDLTV2( const QString& sourceFilePath,
+                           const QString& targetFilePath )
+{
+    bool bResult = true;
+
+    QElapsedTimer timer;
+
+    timer.start();
+
+    QFile sourceFile(sourceFilePath);
+    QFile targetFile(targetFilePath);
+
+    if(sourceFile.open(QFile::OpenModeFlag::ReadOnly)) // open source file
+    {
+        if(targetFile.open(QFile::OpenModeFlag::ReadWrite | QFile::OpenModeFlag::Truncate)) // open target file
+        {
+            uint8_t messageCounter = 0u;
+
+            auto writeDltMsg = [&targetFile,
+                                &messageCounter,
+                                &timer](const QString& str)
+            {
+                uint16_t storageHeaderSize = 0u;
+                uint16_t headerLenOffset = 0u;
+
+                auto elapsedNsecs = timer.nsecsElapsed();
+
+                auto elapsedSeconds = static_cast<uint64_t>(elapsedNsecs / 1000000000);
+                auto elapsedNanoSeconds = static_cast<uint64_t>(elapsedNsecs % 1000000000);
+
+                auto currentMSecsSinceEpoch = QDateTime::currentMSecsSinceEpoch();
+                auto currentSecsSinceEpoch = currentMSecsSinceEpoch / 1000;
+                auto currentNanoSecsSinceEpoch = currentMSecsSinceEpoch % 1000 * 1000000;
+
+                QByteArray data;
+
+                {
+                    // STORAGE HEADER
+
+                    data.push_back(0x44); // D
+                    data.push_back(0x4c); // L
+                    data.push_back(0x54); // T
+                    data.push_back(0x02);
+
+                    uint8_t currentNanoSecsSinceEpoch_1_byte = currentNanoSecsSinceEpoch & 0xff;
+                    uint8_t currentNanoSecsSinceEpoch_2_byte = (currentNanoSecsSinceEpoch >> 8);
+                    uint8_t currentNanoSecsSinceEpoch_3_byte = (currentNanoSecsSinceEpoch >> 16);
+                    uint8_t currentNanoSecsSinceEpoch_4_byte = (currentNanoSecsSinceEpoch >> 24);
+
+                    data.push_back( currentNanoSecsSinceEpoch_1_byte );
+                    data.push_back( currentNanoSecsSinceEpoch_2_byte );
+                    data.push_back( currentNanoSecsSinceEpoch_3_byte );
+                    data.push_back( currentNanoSecsSinceEpoch_4_byte );
+
+                    uint8_t currentSecsSinceEpoch_1_byte = currentSecsSinceEpoch & 0xff;
+                    uint8_t currentSecsSinceEpoch_2_byte = (currentSecsSinceEpoch >> 8);
+                    uint8_t currentSecsSinceEpoch_3_byte = (currentSecsSinceEpoch >> 16);
+                    uint8_t currentSecsSinceEpoch_4_byte = (currentSecsSinceEpoch >> 24);
+                    uint8_t currentSecsSinceEpoch_5_byte = (currentSecsSinceEpoch >> 32);
+
+                    data.push_back( currentSecsSinceEpoch_1_byte );
+                    data.push_back( currentSecsSinceEpoch_2_byte );
+                    data.push_back( currentSecsSinceEpoch_3_byte );
+                    data.push_back( currentSecsSinceEpoch_4_byte );
+                    data.push_back( currentSecsSinceEpoch_5_byte );
+
+                    data.push_back( 4u );
+
+                    data.push_back('E');
+                    data.push_back('C');
+                    data.push_back('U');
+                    data.push_back('1');
+
+                    storageHeaderSize = data.size();
+                }
+
+                {
+                    // HEADER
+
+                    // 0-3 bytes: HTYP2
+                    char HTYP2_byte1 = 0u;
+                    HTYP2_byte1 &= ~( 1UL );         // CNTI. Content Info. 2 bits. 0 stands for:
+                    HTYP2_byte1 &= ~( 1UL << 1 );    // Verbose Mode Data Message
+                    HTYP2_byte1 |=  ( 1UL << 2 );    // WEID. With ECU ID
+                    HTYP2_byte1 |=  ( 1UL << 3 );    // WACID. With App and Context ID
+                    HTYP2_byte1 &= ~( 1UL << 4 );    // WSID. With Session ID
+                    HTYP2_byte1 &= ~( 1UL << 5 );    // Version. 3 bits. We are using version 2.
+                    HTYP2_byte1 |=  ( 1UL << 6 );    // Version
+                    HTYP2_byte1 &= ~( 1UL << 7 );    // Version
+
+                    char HTYP2_byte2 = 0u;
+                    HTYP2_byte2 &= ~( 1UL );         // WSFLN. With Source File Name and Line Number
+                    HTYP2_byte2 &= ~( 1UL << 1 );    // WTGS. With Tags
+                    HTYP2_byte2 &= ~( 1UL << 2 );    // WPVL. With Privacy Level
+                    HTYP2_byte2 &= ~( 1UL << 3 );    // WSGM. With Segmentation
+                    HTYP2_byte2 &= ~( 1UL << 4 );    // Reserved
+                    HTYP2_byte2 &= ~( 1UL << 5 );    // Reserved
+                    HTYP2_byte2 &= ~( 1UL << 6 );    // Reserved
+                    HTYP2_byte2 &= ~( 1UL << 7 );    // Reserved
+
+                    // 2: reserved
+                    char HTYP2_byte3 = 0u;
+
+                    // 3: reserved
+                    char HTYP2_byte4 = 0u;
+
+                    data.push_back(HTYP2_byte1);
+                    data.push_back(HTYP2_byte2);
+                    data.push_back(HTYP2_byte3);
+                    data.push_back(HTYP2_byte4);
+
+                    // 4 byte: MCNT. Message counter.
+                    data.push_back(messageCounter);
+                    ++messageCounter;
+
+                    headerLenOffset = data.size();
+
+                    // 5-6 bytes: LEN - set last, when we can calculate this value.
+                    data.push_back('0');
+                    data.push_back('0');
+
+                    // 7 byte: MSIN. Message info
+                    char MSIN_byte = 0u;
+                    MSIN_byte &= ~( 1UL );         // Reserved
+                    MSIN_byte &= ~( 1UL << 1 );    // MSTP. Message type.
+                    MSIN_byte &= ~( 1UL << 2 );    // 3 bytes
+                    MSIN_byte &= ~( 1UL << 3 );    // 0 stands for Dlt Log Message
+                    MSIN_byte &= ~( 1UL << 4 );    // MTIN. Message type info
+                    MSIN_byte |= ( 1UL << 5 );     // 4 bytes
+                    MSIN_byte |= ( 1UL << 6 );     // 6 stands for DLT_LOG_VERBOSE
+                    MSIN_byte &= ~( 1UL << 7 );    //
+                    data.push_back(MSIN_byte);
+
+                    // 8 byte: NOAR. Number of arguments
+                    // We have one argument, which is a payload
+                    data.push_back(1u);
+
+                    // 7-15 bytes: ns-Timestamp
+                    uint8_t elapsedNanoSeconds_1_byte = elapsedNanoSeconds & 0xff;
+                    uint8_t elapsedNanoSeconds_2_byte = (elapsedNanoSeconds >> 8);
+                    uint8_t elapsedNanoSeconds_3_byte = (elapsedNanoSeconds >> 16);
+                    uint8_t elapsedNanoSeconds_4_byte = (elapsedNanoSeconds >> 24);
+
+                    auto elapsedNanoSeconds_4_byte_with_reserved_bits = elapsedNanoSeconds_4_byte;
+                    elapsedNanoSeconds_4_byte_with_reserved_bits |= ( 1UL << 7 );
+                    data.push_back( elapsedNanoSeconds_4_byte_with_reserved_bits );
+                    data.push_back( elapsedNanoSeconds_3_byte );
+                    data.push_back( elapsedNanoSeconds_2_byte );
+                    data.push_back( elapsedNanoSeconds_1_byte );
+
+                    uint8_t elapsedSeconds_1_byte = elapsedSeconds & 0xff;
+                    uint8_t elapsedSeconds_2_byte = (elapsedSeconds >> 8);
+                    uint8_t elapsedSeconds_3_byte = (elapsedSeconds >> 16);
+                    uint8_t elapsedSeconds_4_byte = (elapsedSeconds >> 24);
+                    uint8_t elapsedSeconds_5_byte = (elapsedSeconds >> 32);
+
+                    data.push_back( elapsedSeconds_5_byte );
+                    data.push_back( elapsedSeconds_4_byte );
+                    data.push_back( elapsedSeconds_3_byte );
+                    data.push_back( elapsedSeconds_2_byte );
+                    data.push_back( elapsedSeconds_1_byte );
+                }
+
+                {
+                    // EXTENSION HEADER
+
+                    // ECU ID
+                    data.push_back(4u);
+                    data.push_back('E');
+                    data.push_back('C');
+                    data.push_back('U');
+                    data.push_back('1');
+
+                    // APP ID
+                    data.push_back(4u);
+                    data.push_back('C');
+                    data.push_back('O');
+                    data.push_back('N');
+                    data.push_back('V');
+
+                    // CONTEXT ID
+                    data.push_back(4u);
+                    data.push_back('I');
+                    data.push_back('M');
+                    data.push_back('P');
+                    data.push_back('1');
+                }
+
+                {
+                    // PAYLOAD
+
+                    // 0-4 bytes: ARG1 Type Info
+                    uint8_t typeInfo_byte_1 = 0u;
+
+                    typeInfo_byte_1 &= ~(1UL);       // Type length
+                    typeInfo_byte_1 &= ~(1UL << 1);  // Type length
+                    typeInfo_byte_1 &= ~(1UL << 2);  // Type length
+                    typeInfo_byte_1 &= ~(1UL << 3);  // Type length
+                    typeInfo_byte_1 &= ~(1UL << 4);  // Bool
+                    typeInfo_byte_1 &= ~(1UL << 5);  // SINT
+                    typeInfo_byte_1 &= ~(1UL << 6);  // UINT
+                    typeInfo_byte_1 &= ~(1UL << 7);  // FLOAT
+
+                    uint8_t typeInfo_byte_2 = 0u;
+
+                    typeInfo_byte_2 &= ~(1UL);       // ARAY
+                    typeInfo_byte_2 |= (1UL << 1);   // STRG
+                    typeInfo_byte_2 &= ~(1UL << 2);  // RAWD
+                    typeInfo_byte_2 &= ~(1UL << 3);  // VARI
+                    typeInfo_byte_2 &= ~(1UL << 4);  // FIXP
+                    typeInfo_byte_2 &= ~(1UL << 5);  // TRAI
+                    typeInfo_byte_2 &= ~(1UL << 6);  // STRU
+                    typeInfo_byte_2 |= (1UL << 7);   // TYFM
+
+                    uint8_t typeInfo_byte_3 = 0u;
+
+                    typeInfo_byte_3 &= ~(1UL);       // TYFM
+                    typeInfo_byte_3 &= ~(1UL << 1);  // TYFM
+                    typeInfo_byte_3 &= ~(1UL << 2);  // (TYPR)
+                    typeInfo_byte_3 &= ~(1UL << 3);  // (TYPR)
+                    typeInfo_byte_3 &= ~(1UL << 4);  // (TYPR)
+                    typeInfo_byte_3 &= ~(1UL << 5);  // (TYPR)
+                    typeInfo_byte_3 &= ~(1UL << 6);  // (TYPR)
+                    typeInfo_byte_3 &= ~(1UL << 7);  // (TYPR)
+
+                    uint8_t typeInfo_byte_4 = 0u;
+
+                    typeInfo_byte_4 &= ~(1UL);       // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 1);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 2);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 3);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 4);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 5);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 6);  // Reserved
+                    typeInfo_byte_4 &= ~(1UL << 7);  // Reserved
+
+                    data.push_back(typeInfo_byte_1);
+                    data.push_back(typeInfo_byte_2);
+                    data.push_back(typeInfo_byte_3);
+                    data.push_back(typeInfo_byte_4);
+
+                    // ARG1 Payload
+                    QString strCopy = str;
+                    auto maxLength = 8192;
+                    if(strCopy.length() >= maxLength )
+                    {
+                        strCopy = strCopy.mid(0, maxLength - 1);
+                    }
+
+                    uint16_t strLength = strCopy.size();
+                    uint8_t strLength_low = strLength & 0xff;
+                    uint8_t strLength_high = (strLength >> 8);
+                    data.push_back(strLength_low);
+                    data.push_back(strLength_high);
+
+                    data.append(strCopy.toUtf8());
+
+                    // 2-3 bytes: LEN - at last, set the data length.
+                    uint16_t dataSize = data.size() - storageHeaderSize;
+                    dataSize = DLT_SWAP_16(dataSize);
+                    uint8_t dataSize_low = dataSize & 0xff;
+                    uint8_t dataSize_high = (dataSize >> 8);
+                    data[storageHeaderSize + 2] = dataSize_low;
+                    data[storageHeaderSize + 3] = dataSize_high;
+                }
+
+                // at last, set the data length.
+                uint16_t dataSize = data.size() - storageHeaderSize;
+                dataSize = DLT_SWAP_16(dataSize);
+                uint8_t dataSize_low = dataSize & 0xff;
+                uint8_t dataSize_high = (dataSize >> 8);
+                data[headerLenOffset] = dataSize_low;
+                data[headerLenOffset + 1] = dataSize_high;
+
+                targetFile.write(data);
+            };
+
+            QString line = sourceFile.readLine();
+            while (!line.isNull())
+            {
+                writeDltMsg(line);
+                line = sourceFile.readLine();
+            }
+
+            targetFile.close();
+        }
+        else
+        {
+            SEND_ERR(QString("Failed to open file \"%1\". Error: \"%2\"")
+                         .arg(targetFilePath)
+                         .arg(targetFile.errorString()));
+            bResult = false;
+        }
+    }
+    else
+    {
+        SEND_ERR(QString("Failed to open file \"%1\". Error: \"%2\"")
+                     .arg(sourceFilePath)
+                     .arg(sourceFile.errorString()));
+        bResult = false;
+    }
+
+    return bResult;
+}
+
+bool isDarkMode()
+{
+    const QColor textColor = qApp->palette().text().color();
+    return textColor.red() > 150 && textColor.green() > 150 && textColor.blue() > 150;
+}
+
+tQStringPtr getDataStrFromMsg(const tMsgId& msgId, const tMsgWrapperPtr &pMsg, eSearchResultColumn field)
+{
+    if(nullptr == pMsg)
+    {
+        return tQStringPtr();
+    }
+
+    tQStringPtr pStrRes = std::make_shared<QString>();
+
+    switch(field)
+    {
+    case eSearchResultColumn::Index:
+    {
+        *pStrRes = QString("%1").arg(msgId);
+    }
+    break;
+    case eSearchResultColumn::Time:
+    {
+        *pStrRes = QString("%1.%2").arg(pMsg->getTimeString()).arg(pMsg->getMicroseconds(),6,10,QLatin1Char('0'));
+    }
+    break;
+    case eSearchResultColumn::Timestamp:
+    {
+        *pStrRes = QString("%1.%2").arg(pMsg->getTimestamp()/10000).arg(pMsg->getTimestamp()%10000,4,10,QLatin1Char('0'));
+    }
+    break;
+    case eSearchResultColumn::Count:
+    {
+        *pStrRes = QString("%1").arg(pMsg->getMessageCounter());
+    }
+    break;
+    case eSearchResultColumn::Ecuid:
+    {
+        *pStrRes = pMsg->getEcuid();
+    }
+    break;
+    case eSearchResultColumn::Apid:
+    {
+        *pStrRes = pMsg->getApid();
+    }
+    break;
+    case eSearchResultColumn::Ctid:
+    {
+        *pStrRes = pMsg->getCtid();
+    }
+    break;
+    case eSearchResultColumn::SessionId:
+    {
+        *pStrRes = QString("%1").arg(pMsg->getSessionid());
+    }
+    break;
+    case eSearchResultColumn::Type:
+    {
+        *pStrRes = pMsg->getTypeString();
+    }
+    break;
+    case eSearchResultColumn::Subtype:
+    {
+        *pStrRes = pMsg->getSubtypeString();
+    }
+    break;
+    case eSearchResultColumn::Mode:
+    {
+        *pStrRes = pMsg->getModeString();
+    }
+    break;
+    case eSearchResultColumn::Args:
+    {
+        *pStrRes = QString("%1").arg(pMsg->getNumberOfArguments());
+    }
+    break;
+    case eSearchResultColumn::Payload:
+    {
+        *pStrRes = pMsg->getPayload();
+    }
+    break;
+    case eSearchResultColumn::UML_Applicability:
+    {
+        *pStrRes = ""; // no string value provided for this column
+    }
+    break;
+    case eSearchResultColumn::PlotView_Applicability:
+    {
+        *pStrRes = ""; // no string value provided for this column
+    }
+    break;
+    case eSearchResultColumn::Last:
+    {
+        *pStrRes = "Unhandled field type!";
+    }
+    break;
+    default:
+        break;
+    }
+
+    return pStrRes;
+}
+
+QColor getChartColor()
+{
+    static const std::vector<QColor> sColors
+    {
+        QColor(255, 0, 0),     // Bright Red
+        QColor(0, 128, 0),     // Dark Green
+        QColor(0, 0, 255),     // Bright Blue
+        QColor(255, 165, 0),   // Orange
+        QColor(128, 0, 128),   // Purple
+        QColor(0, 255, 255),   // Cyan
+        QColor(139, 69, 19),   // Saddle Brown
+        QColor(255, 20, 147),  // Deep Pink
+        QColor(255, 140, 0),   // Dark Orange
+        QColor(75, 0, 130),    // Indigo
+        QColor(0, 206, 209),   // Dark Turquoise
+        QColor(34, 139, 34),   // Forest Green
+        QColor(210, 105, 30),  // Chocolate
+        QColor(148, 0, 211),   // Dark Violet
+        QColor(0, 0, 139),     // Dark Blue
+        QColor(255, 69, 0),    // Red-Orange
+        QColor(0, 255, 127),   // Spring Green
+        QColor(112, 128, 144), // Slate Gray
+        QColor(0, 191, 255),   // Deep Sky Blue
+        QColor(220, 20, 60),   // Crimson
+        QColor(0, 128, 128),   // Teal
+    };
+    static const int sColorsSize = sColors.size();
+    static std::atomic<int> sColorsCounter(0);
+    return sColors[sColorsCounter++ % sColorsSize];
+}
+
+void releaseMemoryToOS()
+{
+#ifdef DMA_TC_MALLOC_OPTIMIZATION_ENABLED
+    MallocExtension::instance()->ReleaseFreeMemory();
+#elif DMA_GLIBC_MALLOC_OPTIMIZATION_ENABLED
+    malloc_trim(0);
+#endif
+}
+
+#ifdef DMA_TC_MALLOC_PROFILING_ENABLED
+void dumpMemoryStatistics()
+{
+    SEND_MSG("");
+    SEND_MSG("----------------------------------------------------|");
+    SEND_MSG("---------------TC_MALLOC_OUTPUT_START---------------|");
+    SEND_MSG("----------------------------------------------------|");
+    SEND_MSG("");
+
+    const int bufferSize = 100000;
+    char stats[bufferSize];
+    MallocExtension::instance()->GetStats(stats, bufferSize);
+    QString str(stats);
+    auto strVec = str.split("\n");
+
+    for(const auto& str : strVec)
+    {
+        SEND_MSG(QString("%1").arg(str));
+    }
+
+    SEND_MSG("");
+    SEND_MSG("----------------------------------------------------|");
+    SEND_MSG("----------------TC_MALLOC_OUTPUT_END----------------|");
+    SEND_MSG("----------------------------------------------------|");
+    SEND_MSG("");
+}
+#endif
 
 PUML_PACKAGE_BEGIN(Qt)
     PUML_CLASS_BEGIN(QThread)
@@ -2646,6 +3707,10 @@ PUML_PACKAGE_BEGIN(Qt)
     PUML_CLASS_END()
     PUML_CLASS_BEGIN(QFileSystemWatcher)
     PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QTextEdit)
+    PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QListView)
+    PUML_CLASS_END()
 PUML_PACKAGE_END()
 
 PUML_PACKAGE_BEGIN(DLT)
@@ -2655,12 +3720,40 @@ PUML_PACKAGE_BEGIN(DLT)
     PUML_INTERFACE_END()
     PUML_INTERFACE_BEGIN(QDltPluginViewerInterface)
     PUML_INTERFACE_END()
+#ifdef PLUGIN_API_COMPATIBILITY_MODE_1_0_0
     PUML_CLASS_BEGIN(QDltPlugin)
     PUML_CLASS_END()
     PUML_CLASS_BEGIN(QDltPluginManager)
     PUML_CLASS_END()
+#endif
     PUML_CLASS_BEGIN(QDltFile)
     PUML_CLASS_END()
     PUML_CLASS_BEGIN(QDltMsg)
+    PUML_CLASS_END()
+PUML_PACKAGE_END()
+
+PUML_PACKAGE_BEGIN(qcustomplot)
+    PUML_CLASS_BEGIN(QCustomPlot)
+        PUML_INHERITANCE(QWidget, extends)
+    PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QCPLegend)
+        PUML_INHERITANCE(QObject, extends)
+    PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QCPAxis)
+        PUML_INHERITANCE(QCPLayerable, extends)
+    PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QCPLayerable)
+        PUML_INHERITANCE(QObject, extends)
+    PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QCPAxisRect)
+        PUML_INHERITANCE(QObject, extends)
+PUML_CLASS_END()
+    PUML_CLASS_BEGIN(QCPGraph)
+        PUML_INHERITANCE(QObject, extends)
+    PUML_CLASS_END()
+PUML_PACKAGE_END()
+
+PUML_PACKAGE_BEGIN(nlohmann_json)
+    PUML_CLASS_BEGIN(nlohmann::json)
     PUML_CLASS_END()
 PUML_PACKAGE_END()

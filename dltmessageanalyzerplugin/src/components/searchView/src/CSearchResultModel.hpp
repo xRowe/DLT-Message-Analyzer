@@ -17,8 +17,7 @@
 
 #include "components/settings/api/CSettingsManagerClient.hpp"
 
-class CSearchResultModel : public QAbstractTableModel,
-                           public ISearchResultModel,
+class CSearchResultModel : public ISearchResultModel,
                            public CSettingsManagerClient
 {
     Q_OBJECT
@@ -33,8 +32,13 @@ public:
     void updateView(const int& fromRow = 0) override;
     void resetData() override;
     int getFileIdx( const QModelIndex& idx ) const override;
+    int getRowByMsgId( const tMsgId& id ) const override;
     std::pair<bool, tIntRange> addNextMessageIdxVec(const tFoundMatchesPack& foundMatchesPack) override;
     std::pair<int /*rowNumber*/, QString /*diagramContent*/> getUMLDiagramContent() const override;
+    tPlotContent createPlotContent() const override;
+    void setHighlightedRows( const tMsgIdSet& msgs) override;
+    const tFoundMatchesPackItem& getFoundMatchesItemPack( const QModelIndex& modelIndex ) const override;
+    const tMsgIdSet& getHighlightedRows() const override;
     // implementation of the ISearchResultModel ( END )
 
     int rowCount(const QModelIndex &parent) const override;
@@ -43,18 +47,14 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     Qt::ItemFlags flags(const QModelIndex &index) const override;
 
-    const tFoundMatchesPackItem& getFoundMatchesItemPack( const QModelIndex& modelIndex ) const;
-
     void setUML_Applicability( const QModelIndex& index, bool checked );
+    void setPlotView_Applicability( const QModelIndex& index, bool checked );
 
     QString getStrValue(const int& row, const eSearchResultColumn& column) const;
 
 private:
 
-    tQStringPtr getDataStrFromMsg(const tMsgId& msgId, const tMsgWrapperPtr &pMsg, eSearchResultColumn field) const;
-
-private:
-
     tFoundMatchesPack mFoundMatchesPack;
     tFileWrapperPtr mpFile;
+    tMsgIdSet mHighlightMessages;
 };

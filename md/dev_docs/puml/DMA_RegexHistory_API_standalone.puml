@@ -1,0 +1,64 @@
+
+@startuml
+
+skinparam backgroundColor #FEFEFE
+skinparam wrapWidth 600
+package "DMA_Framework_Component" #DDDDDD
+{
+
+class "DMA::IComponent"
+{
+}
+
+}
+
+package "DMA_RegexHistory_API" #DDDDDD
+{
+
+class "CRegexHistoryComponent"
+{
+}
+
+class "CRegexHistoryTextEdit"
+{
+}
+
+class "IRegexHistoryProvider"
+{
+}
+
+}
+
+package "DMA_Settings_API" #DDDDDD
+{
+
+class "CSettingsManagerClient"
+{
+}
+
+}
+
+package "Qt" #DDDDDD
+{
+
+class "QObject"
+{
+}
+
+class "QTextEdit"
+{
+}
+
+}
+
+'====================Inheritance section====================
+DMA::IComponent <|-- CRegexHistoryComponent : implements
+CSettingsManagerClient <|-- CRegexHistoryTextEdit : extends
+QTextEdit <|-- CRegexHistoryTextEdit : extends
+QObject <|-- IRegexHistoryProvider : extends
+
+'====================Dependencies section====================
+CRegexHistoryComponent "1" --> "1" CRegexHistoryTextEdit : passes
+CRegexHistoryTextEdit "1" o-- "1" IRegexHistoryProvider : uses
+
+@enduml

@@ -39,6 +39,8 @@ class CPatternsView;
 class CFiltersView;
 class CUMLView;
 class CLogo;
+class CCustomPlotExtended;
+class CRegexHistoryTextEdit;
 
 namespace Ui {
     class Form;
@@ -58,7 +60,7 @@ public:
     CGroupedView* getGroupedResultView();
     QProgressBar* getProgresBar();
     QLabel* getProgresBarLabel();
-    QLineEdit* getRegexLineEdit();
+    CRegexHistoryTextEdit* getRegexTextEdit();
     QLabel* getErrorLabel();
     CPatternsView* getPatternsTableView();
     QComboBox* getNumberOfThreadsComboBox();
@@ -79,14 +81,21 @@ public:
     QLineEdit* getFiltersSearchInput();
     QLineEdit* getConsoleViewInput();
     CUMLView* getUMLView();
+    CCustomPlotExtended* getCustomPlot();
     QPushButton* getCreateSequenceDiagramButton();
     CLogo* getLogo();
     QPushButton* getUMLCreateDiagramFromTextButton();
+    QPushButton* getCreatePlotButton();
     QPlainTextEdit* getUMLTextEditor();
+    QTableView* getCNItemsTableView();
+    QTextEdit* getCNMessageTextEdit();
+    QTextEdit* getCNCommentTextEdit();
+    QTextEdit* getCNRegexTextEdit();
+    QPushButton* getCNUseRegexButton();
+    QLineEdit* getCNCurrentFileLineEdit();
 
 private slots:
     void on_analyze_clicked();
-    void on_regex_returnPressed();
     void on_pushButton_clicked();
     void on_hidePatterns_clicked();
     void on_splitter_patterns_results_splitterMoved(int pos, int index);

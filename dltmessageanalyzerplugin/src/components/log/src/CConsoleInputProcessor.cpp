@@ -18,7 +18,7 @@
 
 #include "DMA_Plantuml.hpp"
 
-static const int sMaxCommandsHistorySize = 100;
+static const int sMaxCommandsHistorySize = 50;
 static const QString sHelpCommandName = "help";
 
 namespace NShortcuts
@@ -53,7 +53,9 @@ static void supportedColors()
 {
     SEND_MSG("Supported colors:");
 
-    for(const auto& colorItem : sColorsMap)
+    const auto& colorsMap = getColorsMap();
+
+    for(const auto& colorItem : colorsMap)
     {
         SEND_MSG_COLORED(colorItem.first, colorItem.second);
     }
@@ -253,6 +255,11 @@ static void UML_sequence_identifiers()
     {
         QString id_type_msg = QString("Type - ").append(getUMLIDTypeAsString(item.second.id_type));
 
+        if(item.first == eUML_ID::UML_TIMESTAMP)
+        {
+            id_type_msg.append(" - if not specified, the dlt message timestamp is used");
+        }
+
         if(item.second.id_type == eUML_ID_Type::e_RequestType)
         {
             id_type_msg.append(" - at least one of the request types should be filled in");
@@ -263,6 +270,36 @@ static void UML_sequence_identifiers()
                  .arg(item.second.description)
                  .arg(id_type_msg));
     }
+}
+
+static void plot_identifiers()
+{
+    SEND_MSG("Plot regex group identifiers, which are supported by the plugin:");
+
+    for(const auto& item : sPlotViewIDsMap)
+    {
+        QString id_type_msg = QString("Type - ").append(getPlotIDTypeAsString(item.second.id_type));
+
+        SEND_MSG(QString("[%1] : %2 | <%3>")
+                     .arg( getPlotIDAsString( item.first ) )
+                     .arg(item.second.description)
+                     .arg(id_type_msg));
+    }
+}
+
+static void plot_operations()
+{
+    SEND_MSG("How to work with the plot?");
+    SEND_MSG("- Scroll - zoom horizontally");
+    SEND_MSG("- Click+move - drag horizontally");
+    SEND_MSG("- Shift+scroll - zoom vertically");
+    SEND_MSG("- Shift+click+move - drag vertically");
+    SEND_MSG("- Ctrl+scroll - change opacity");
+    SEND_MSG("- 'F' key with having a selected point on the graph - filter/unfilter the selected graph");
+    SEND_MSG("- Click on the legend item - hide/show the selected graph");
+    SEND_MSG("- Ctrl+click on the legend item - move the selected graph to the font");
+    SEND_MSG("- Space - reset the vertical scale of all charts");
+    SEND_MSG("- Click on the graph point - jump to the corresponding message in the dlt-viewer's main table, and show the point details");
 }
 
 void CConsoleInputProcessor::printHelp(const QString& command)
@@ -350,6 +387,10 @@ CConsoleInputProcessor::tScenariosMap CConsoleInputProcessor::createScenariosMap
                       "- clears debug view");
     result["color-aliases"] = CConsoleInputProcessor::tScenarioData([](const CConsoleInputProcessor::tParamMap&){supportedColors();}
                               , "- prints all supported color aliases");
+    result["plot-ids"] = CConsoleInputProcessor::tScenarioData([](const CConsoleInputProcessor::tParamMap&){plot_identifiers();}
+                                  , "- prints information about regex names scripting in area of the plot diagrams.");
+    result["plot-operations"] = CConsoleInputProcessor::tScenarioData([](const CConsoleInputProcessor::tParamMap&){plot_operations();}
+                                  , "- prints information about regex names scripting in area of the plot diagrams.");
     result["support"] = CConsoleInputProcessor::tScenarioData([](const CConsoleInputProcessor::tParamMap&){support();}
                         , "- prints information regarding how to get support");
     result["version"] = CConsoleInputProcessor::tScenarioData([](const CConsoleInputProcessor::tParamMap&){version();}
@@ -420,7 +461,7 @@ CConsoleInputProcessor::tScenariosMap CConsoleInputProcessor::createScenariosMap
         {
             printAppClassDiagram();
         }
-    }, "[-p=<packageName> // case sensitive name of the package. Can be empty or contain special \"all\" value.]"
+    }, "[-p=<packageName> // case sensitive name of the package. Can contain special \"all\" value.]"
        "[-e=<exclude-external-dependencies> // whether to exclude external dependencies] "
        "- prints class diagram of the whole application or of the dedicated package(s) to the console. "
        "In case if no parameters provided - the whole application's diagram will be dumped.");
@@ -501,7 +542,7 @@ CConsoleInputProcessor::tScenariosMap CConsoleInputProcessor::createScenariosMap
             SEND_ERR("Command [uml-export-class-diagram]: required parameter \"d\" not found!");
         }
     }, "[-d=<directory> // mandatory! Directory, to which store the the diagrams]"
-       "[-p=<packageName> // case sensitive name of the package. Can be empty or contain special \"all\" value.]"
+       "[-p=<packageName> // case sensitive name of the package. Can contain special \"all\" value.]"
        "[-e=<exclude-external-dependencies> // whether to exclude external dependencies] "
        "- exports class diagram of the whole application or of the dedicated package(s) to the file-system. "
        "In case if no optional parameters provided - the whole application's diagram will be exported.");
@@ -578,12 +619,36 @@ CConsoleInputProcessor::tScenariosMap CConsoleInputProcessor::createScenariosMap
 
                 if(foundTargetFileParam != params.end())
                 {
-                    bool bConvertionResult = convertLogFileToDLT(foundSourceFileParam->second, foundTargetFileParam->second);
+                    bool bConvertionResult = false;
+
+                    auto foundVersionParam = params.find("version");
+
+                    if(foundVersionParam != params.end())
+                    {
+                        if(foundVersionParam->second.toLower() == "v2")
+                        {
+                            bConvertionResult = convertLogFileToDLTV2(foundSourceFileParam->second, foundTargetFileParam->second);
+                        }
+                        else if(foundVersionParam->second.toLower() == "v1")
+                        {
+                            bConvertionResult = convertLogFileToDLTV1(foundSourceFileParam->second, foundTargetFileParam->second);
+                        }
+                        else
+                        {
+                            SEND_ERR(QString("Command [convert-txt-to-dlt-file]: Wrong value '%1' was passed for the parameter 'version'! "
+                                             "Supported values are 'v1' and 'v2'.")
+                                         .arg(foundVersionParam->second));
+                        }
+                    }
+                    else
+                    {
+                        bConvertionResult = convertLogFileToDLTV2(foundSourceFileParam->second, foundTargetFileParam->second);
+                    }
 
                     if(false == bConvertionResult)
                     {
-                       SEND_ERR(QString("Command [convert-txt-to-dlt-file]: Failed to convert the \"%1\" file to dlt format!")
-                                .arg(foundSourceFileParam->second));
+                        SEND_ERR(QString("Command [convert-txt-to-dlt-file]: Failed to convert the \"%1\" file to dlt format!")
+                                     .arg(foundSourceFileParam->second));
                     }
                     else
                     {
@@ -602,12 +667,18 @@ CConsoleInputProcessor::tScenariosMap CConsoleInputProcessor::createScenariosMap
         }
         else
         {
-            printAppClassDiagram();
+            SEND_ERR("Command [convert-txt-to-dlt-file]: required parameters \"sf\" and \"tf\" not found!");
         }
     },
-    "- converts specified file with '\n' separated set of strings to the dlt format"
+    "- converts specified file with '\\n' separated set of strings to the dlt format"
     "[-sf=<source_file> // mandatory! Source file which we should convert to the dlt format]"
-    "[-tf=<target file> // mandatory! Target file, into which we should save the content]");
+    "[-tf=<target file> // mandatory! Target file, into which we should save the content]"
+    "[-v=<version> // optional! Version of the dlt protocol. Supported values are 'v1' and 'v2'. Default value is 'v2']");
+
+#ifdef DMA_TC_MALLOC_PROFILING_ENABLED
+    result["dump-memory-stats"] = CConsoleInputProcessor::tScenarioData([](const CConsoleInputProcessor::tParamMap&){dumpMemoryStatistics();}
+                              , "- prints tcmalloc memory stats.");
+#endif
 
     return result;
 }
@@ -652,13 +723,13 @@ bool CConsoleInputProcessor::eventFilter(QObject* pObj, QEvent* pEvent)
                     }
                     else
                     {
-                        if(mCurrentHistoryItem < static_cast<int>(mHistory.size() - 1))
+                        if(mCurrentHistoryItem > 0)
                         {
                             QString text = mpTargetLineEdit->text();
 
                             if(false == text.isEmpty())
                             {
-                                ++mCurrentHistoryItem;
+                                --mCurrentHistoryItem;
                             }
 
                             mpTargetLineEdit->setText(mHistory[static_cast<std::size_t>(mCurrentHistoryItem)]);
@@ -688,13 +759,13 @@ bool CConsoleInputProcessor::eventFilter(QObject* pObj, QEvent* pEvent)
                     }
                     else
                     {
-                        if(mCurrentHistoryItem > 0)
+                        if(mCurrentHistoryItem < static_cast<int>(mHistory.size() - 1))
                         {
                             QString text = mpTargetLineEdit->text();
 
                             if(false == text.isEmpty())
                             {
-                                --mCurrentHistoryItem;
+                                ++mCurrentHistoryItem;
                             }
 
                             mpTargetLineEdit->setText(mHistory[static_cast<std::size_t>(mCurrentHistoryItem)]);
@@ -769,22 +840,40 @@ bool CConsoleInputProcessor::eventFilter(QObject* pObj, QEvent* pEvent)
             {
                 QString text = mpTargetLineEdit->text();
 
-                mHistory.push_front(text);
-                mCurrentHistoryItem = 0;
+                if(!text.isEmpty())
+                {
+                    auto foundHistoryItem = std::find_if( mHistory.begin(), mHistory.end(), [&text](const QString& historyItem)->bool
+                    {
+                        return historyItem == text;
+                    });
 
-                if(mHistory.size() == 1)
-                {
-                    mbBorderReached = eHistoryBorderStatus::Reached_Both;
-                }
-                else if(mHistory.size() > 1)
-                {
-                    mbBorderReached = eHistoryBorderStatus::Not_Near_Border;
+                    if(foundHistoryItem == mHistory.end())
+                    {
+                        mHistory.push_back(text);
+
+                        if(mHistory.size() == 1)
+                        {
+                            mbBorderReached = eHistoryBorderStatus::Reached_Both;
+                        }
+                        else if(mHistory.size() > 1)
+                        {
+                            mbBorderReached = eHistoryBorderStatus::Not_Near_Border;
+                        }
+
+                        if(mHistory.size() > sMaxCommandsHistorySize)
+                        {
+                            mHistory.resize(sMaxCommandsHistorySize);
+                        }
+                    }
+                    else
+                    {
+                        mHistory.erase(foundHistoryItem);
+                        mHistory.push_back(text);
+                    }
                 }
 
-                if(mCurrentHistoryItem > sMaxCommandsHistorySize)
-                {
-                    mHistory.resize(sMaxCommandsHistorySize);
-                }
+                mCurrentHistoryItem = mHistory.size() - 1;
+                mbBorderReached = eHistoryBorderStatus::Reached_Last;
 
                 mpTargetLineEdit->clear();
 

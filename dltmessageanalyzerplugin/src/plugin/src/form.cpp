@@ -69,7 +69,7 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
 
         mpUI->iconButton->setText("");
 
-        connect(mpUI->iconButton, &QPushButton::clicked, [this]()
+        connect(mpUI->iconButton, &QPushButton::clicked, this, [this]()
         {
             if(nullptr != mpDLTMessageAnalyzerPlugin)
             {
@@ -128,6 +128,29 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
         mpUI->patternsTreeView->setHorizontalScrollBarPolicy(Qt::ScrollBarPolicy::ScrollBarAlwaysOff);
         mpUI->searchView->horizontalHeader()->setVisible(true);
         mpUI->groupedView->header()->setVisible(true);
+        mpUI->searchView->setAutoScroll(true);
+    }
+
+    if(mpUI->CNSplitter_1)
+    {
+        QList<int> sizes;
+        sizes.push_back(100);
+        sizes.push_back(300);
+        mpUI->CNSplitter_1->setSizes(sizes);
+    }
+
+    if(mpUI->CNSplitter_2)
+    {
+        QList<int> sizes;
+        sizes.push_back(300);
+        sizes.push_back(50);
+        sizes.push_back(50);
+        mpUI->CNSplitter_2->setSizes(sizes);
+    }
+
+    if(mpUI->CNItems)
+    {
+        mpUI->CNItems->resizeColumnsToContents();
     }
 
     auto showContextMenu = [this](const QPoint &pos)
@@ -136,7 +159,7 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
 
         {
             QAction* pAction = new QAction("Write settings on each update", this);
-            connect(pAction, &QAction::triggered, [this](bool checked)
+            connect(pAction, &QAction::triggered, this, [this](bool checked)
             {
                 getSettingsManager()->setWriteSettingsOnEachUpdate(checked);
             });
@@ -149,7 +172,7 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
 
         {
             QAction* pAction = new QAction("Enable cache", this);
-            connect(pAction, &QAction::triggered, [this](bool checked)
+            connect(pAction, &QAction::triggered, this, [this](bool checked)
             {
                 getSettingsManager()->setCacheEnabled(checked);
             });
@@ -164,7 +187,7 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
                 QString msg = QString("Set cache size (cur. value - %1 Mb) ...").arg(getSettingsManager()->getCacheMaxSizeMB());
 
                 QAction* pAction = new QAction(msg, this);
-                connect(pAction, &QAction::triggered, [this]()
+                connect(pAction, &QAction::triggered, this, [this]()
                 {
                     tCacheSizeMB maxRAMSize = 0;
 
@@ -198,7 +221,7 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
             if(true == getSettingsManager()->getCacheEnabled())
             {
                 QAction* pAction = new QAction("Reset cache ...", this);
-                connect(pAction, &QAction::triggered, [this]()
+                connect(pAction, &QAction::triggered, this, [this]()
                 {
                     if(nullptr != mpDLTMessageAnalyzerPlugin)
                     {
@@ -212,8 +235,21 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
         contextMenu.addSeparator();
 
         {
+            QAction* pAction = new QAction("Grouped view", this);
+            connect(pAction, &QAction::triggered, this, [this](bool checked)
+            {
+                getSettingsManager()->setGroupedViewFeatureActive(checked);
+            });
+            pAction->setCheckable(true);
+            pAction->setChecked(getSettingsManager()->getGroupedViewFeatureActive());
+            contextMenu.addAction(pAction);
+        }
+
+        contextMenu.addSeparator();
+
+        {
             QAction* pAction = new QAction("PlantUML", this);
-            connect(pAction, &QAction::triggered, [this](bool checked)
+            connect(pAction, &QAction::triggered, this, [this](bool checked)
             {
                 getSettingsManager()->setUML_FeatureActive(checked);
             });
@@ -225,8 +261,21 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
         contextMenu.addSeparator();
 
         {
+            QAction* pAction = new QAction("Plot view", this);
+            connect(pAction, &QAction::triggered, this, [this](bool checked)
+                    {
+                        getSettingsManager()->setPlotViewFeatureActive(checked);
+                    });
+            pAction->setCheckable(true);
+            pAction->setChecked(getSettingsManager()->getPlotViewFeatureActive());
+            contextMenu.addAction(pAction);
+        }
+
+        contextMenu.addSeparator();
+
+        {
             QAction* pAction = new QAction("Open settings folder", this);
-            connect(pAction, &QAction::triggered, [this]()
+            connect(pAction, &QAction::triggered, this, [this]()
             {
                 SEND_MSG(QString("[Form]: Attempt to open path - \"%1\"")
                          .arg(getSettingsManager()->getSettingsFilepath()));
@@ -240,12 +289,67 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
 
         {
             QAction* pAction = new QAction("RDP mode", this);
-            connect(pAction, &QAction::triggered, [this](bool checked)
+            connect(pAction, &QAction::triggered, this, [this](bool checked)
             {
                 getSettingsManager()->setRDPMode(checked);
             });
             pAction->setCheckable(true);
             pAction->setChecked(getSettingsManager()->getRDPMode());
+            contextMenu.addAction(pAction);
+        }
+
+        contextMenu.addSeparator();
+
+        {
+            QAction* pAction = new QAction("Set username ...", this);
+            connect(pAction, &QAction::triggered, this, [this](bool)
+            {
+                QDialog dialog(this);
+                // Use a layout allowing to have a label next to each field
+                QFormLayout form(&dialog);
+
+                // Add some text above the fields
+                form.addRow(new QLabel("Set username"));
+
+                // Add the lineEdits with their respective labels
+                QList<QLineEdit *> fields;
+
+                QLineEdit* usernameLineEdit = new QLineEdit(&dialog);
+
+                {
+                    usernameLineEdit->setText( getSettingsManager()->getUsername() );
+                    QString label("Username:");
+                    form.addRow(label, usernameLineEdit);
+                    fields << usernameLineEdit;
+                }
+
+                dialog.resize(400, dialog.height());
+
+                // Add some standard buttons (Cancel/Ok) at the bottom of the dialog
+                QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                           Qt::Horizontal, &dialog);
+                form.addRow(&buttonBox);
+
+                auto accept_handler = [this, &usernameLineEdit, &dialog]()
+                {
+                    if(usernameLineEdit)
+                    {
+                        getSettingsManager()->setUserName(usernameLineEdit->text());
+                    }
+                    dialog.accept();
+                };
+
+                auto reject_handler = [&dialog]()
+                {
+                    dialog.reject();
+                };
+
+                QObject::connect(&buttonBox, &QDialogButtonBox::accepted, &dialog, accept_handler);
+                QObject::connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, reject_handler);
+
+                // Show the dialog as modal
+                dialog.exec();
+            });
             contextMenu.addAction(pAction);
         }
 
@@ -256,7 +360,7 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
 
     if(nullptr != mpUI->patternsTreeView)
     {
-        connect(mpUI->patternsTreeView, &CPatternsView::patternSelected, [this]( const QString& )
+        connect(mpUI->patternsTreeView, &CPatternsView::patternSelected, this, [this]( const QString&, const QStringList& )
         {
             if(nullptr != mpDLTMessageAnalyzerPlugin)
             {
@@ -271,15 +375,48 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
     if(nullptr != mpUI->PNG_UML_View
     && nullptr != mpUI->createSequenceDiagram)
     {
-        connect(mpUI->PNG_UML_View, &CUMLView::diagramGenerationStarted, [this]()
+        connect(mpUI->PNG_UML_View, &CUMLView::diagramGenerationStarted, this, [this]()
         {
             mpUI->createSequenceDiagram->setText("Cancel");
         });
 
-        connect(mpUI->PNG_UML_View, &CUMLView::diagramGenerationFinished, [this](bool)
+        connect(mpUI->PNG_UML_View, &CUMLView::diagramGenerationFinished, this, [this](bool)
         {
             mpUI->createSequenceDiagram->setText("Create sequence diagram");
         });
+
+        {
+            auto pGroupedViewWidget = mpUI->tabWidget->findChild<QWidget*>(QString("groupedViewTab"));
+
+            if(nullptr != pGroupedViewWidget)
+            {
+                auto enableGroupedViewWidget = [this, pGroupedViewWidget](bool val)
+                {
+                    if(nullptr != mpUI && nullptr != mpUI->tabWidget)
+                    {
+                        if(mpUI->tabWidget->count() > 0)
+                        {
+                            if(true != val)
+                            {
+                                mpUI->tabWidget->removeTab(mpUI->tabWidget->indexOf(pGroupedViewWidget));
+                            }
+                            else
+                            {
+                                mpUI->tabWidget->insertTab(static_cast<int>(eTabIndexes::GROUPED_VIEW), pGroupedViewWidget, "Grouped view");
+                            }
+                        }
+                    }
+                };
+
+                enableGroupedViewWidget(getSettingsManager()->getGroupedViewFeatureActive());
+
+                connect(getSettingsManager().get(), &ISettingsManager::groupedViewFeatureActiveChanged,
+                        this, [enableGroupedViewWidget](bool val)
+                {
+                    enableGroupedViewWidget(val);
+                });
+            }
+        }
 
         {
             auto pUMLWidget = mpUI->tabWidget->findChild<QWidget*>(QString("UMLView"));
@@ -298,7 +435,10 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
                             }
                             else
                             {
-                                mpUI->tabWidget->insertTab(3, pUMLWidget, "UML View");
+                                mpUI->tabWidget->insertTab(true == getSettingsManager()->getGroupedViewFeatureActive() ?
+                                                           static_cast<int>(eTabIndexes::UML_VIEW) :
+                                                           static_cast<int>(eTabIndexes::UML_VIEW) - 1,
+                                                           pUMLWidget, "UML View");
                             }
                         }
                     }
@@ -306,13 +446,77 @@ Form::Form(DLTMessageAnalyzerPlugin* pDLTMessageAnalyzerPlugin,
 
                 enableUMLWidget(getSettingsManager()->getUML_FeatureActive());
 
-                connect(getSettingsManager().get(), &ISettingsManager::UML_FeatureActiveChanged, [enableUMLWidget](bool val)
+                connect(getSettingsManager().get(), &ISettingsManager::UML_FeatureActiveChanged,
+                        this, [enableUMLWidget](bool val)
                 {
                     enableUMLWidget(val);
                 });
             }
         }
+
+        {
+            auto pPlotViewWidget = mpUI->tabWidget->findChild<QWidget*>(QString("plotViewTab"));
+
+            if(nullptr != pPlotViewWidget)
+            {
+                auto enablePlotViewWidget = [this, pPlotViewWidget](bool val)
+                {
+                    if(nullptr != mpUI && nullptr != mpUI->tabWidget)
+                    {
+                        if(mpUI->tabWidget->count() > 0)
+                        {
+                            if(true != val)
+                            {
+                                mpUI->tabWidget->removeTab(mpUI->tabWidget->indexOf(pPlotViewWidget));
+                            }
+                            else
+                            {
+                                auto bGroupedViewFeatureActive = getSettingsManager()->getGroupedViewFeatureActive();
+                                auto bUML_FeatureActive = getSettingsManager()->getUML_FeatureActive();
+                                int tabIndex = static_cast<int>(eTabIndexes::PLOT_VIEW) - !bGroupedViewFeatureActive - !bUML_FeatureActive;
+                                mpUI->tabWidget->insertTab(tabIndex, pPlotViewWidget, "Plot view");
+                            }
+                        }
+                    }
+                };
+
+                enablePlotViewWidget(getSettingsManager()->getPlotViewFeatureActive());
+
+                connect(getSettingsManager().get(), &ISettingsManager::plotViewFeatureActiveChanged,
+                        this, [enablePlotViewWidget](bool val)
+                {
+                    enablePlotViewWidget(val);
+                });
+            }
+        }
     }
+
+    connect(mpUI->tabWidget, &QTabWidget::currentChanged, this, [this](int index)
+    {
+        int32_t plotViewTabIndex = -1;
+
+        for (int i = 0; i < mpUI->tabWidget->count(); ++i)
+        {
+            if (mpUI->tabWidget->tabText(i) == "Plot view")
+            {
+                plotViewTabIndex = i;
+                break;
+            }
+        }
+
+        if(plotViewTabIndex >= 0)
+        {
+            if(index == plotViewTabIndex)
+            {
+                mpUI->plot->setFocus();
+            }
+        }
+    });
+
+    connect(mpUI->CreatePlotButton, &QPushButton::clicked, this, [this](bool)
+    {
+        mpUI->plot->setFocus();
+    });
 
     QList<int> newSplitterSizes;
     newSplitterSizes.push_back(1000);
@@ -371,9 +575,9 @@ QLabel* Form::getProgresBarLabel()
     return pResult;
 }
 
-QLineEdit* Form::getRegexLineEdit()
+CRegexHistoryTextEdit* Form::getRegexTextEdit()
 {
-    QLineEdit* pResult = nullptr;
+    CRegexHistoryTextEdit* pResult = nullptr;
 
     if(mpUI)
     {
@@ -624,6 +828,11 @@ CUMLView* Form::getUMLView()
     return pResult;
 }
 
+CCustomPlotExtended* Form::getCustomPlot()
+{
+    return mpUI->plot;
+}
+
 QPushButton* Form::getCreateSequenceDiagramButton()
 {
     QPushButton* pResult = nullptr;
@@ -660,6 +869,18 @@ QPushButton* Form::getUMLCreateDiagramFromTextButton()
     return pResult;
 }
 
+QPushButton* Form::getCreatePlotButton()
+{
+    QPushButton* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CreatePlotButton;
+    }
+
+    return pResult;
+}
+
 QPlainTextEdit* Form::getUMLTextEditor()
 {
     QPlainTextEdit* pResult = nullptr;
@@ -670,14 +891,6 @@ QPlainTextEdit* Form::getUMLTextEditor()
     }
 
     return pResult;
-}
-
-void Form::on_regex_returnPressed()
-{
-    if(nullptr != mpDLTMessageAnalyzerPlugin)
-    {
-        mpDLTMessageAnalyzerPlugin->analyze();
-    }
 }
 
 void Form::on_pushButton_clicked()
@@ -817,6 +1030,78 @@ void Form::on_createSequenceDiagram_clicked()
     }
 }
 
+QTableView* Form::getCNItemsTableView()
+{
+    QTableView* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CNItems;
+    }
+
+    return pResult;
+}
+
+QTextEdit* Form::getCNMessageTextEdit()
+{
+    QTextEdit* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CNMessagesTextEdit;
+    }
+
+    return pResult;
+}
+
+QTextEdit* Form::getCNCommentTextEdit()
+{
+    QTextEdit* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CNCommentTextEdit;
+    }
+
+    return pResult;
+}
+
+QTextEdit* Form::getCNRegexTextEdit()
+{
+    QTextEdit* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CNRegexTextEdit;
+    }
+
+    return pResult;
+}
+
+QPushButton* Form::getCNUseRegexButton()
+{
+    QPushButton* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CNUseRegexButton;
+    }
+
+    return pResult;
+}
+
+QLineEdit* Form::getCNCurrentFileLineEdit()
+{
+    QLineEdit* pResult = nullptr;
+
+    if(mpUI)
+    {
+        pResult = mpUI->CNCurrentFileLineEdit;
+    }
+
+    return pResult;
+}
+
 PUML_PACKAGE_BEGIN(DMA_Plugin_API)
     PUML_CLASS_BEGIN_CHECKED(Form)
         PUML_INHERITANCE_CHECKED(QWidget, extends)
@@ -833,5 +1118,6 @@ PUML_PACKAGE_BEGIN(DMA_Plugin_API)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CSearchResultView, 1, 1, contains)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CUMLView, 1, 1, contains)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CLogo, 1, 1, contains)
+        PUML_COMPOSITION_DEPENDENCY_CHECKED(CRegexHistoryTextEdit, 1, 1, contains)
     PUML_CLASS_END()
 PUML_PACKAGE_END()

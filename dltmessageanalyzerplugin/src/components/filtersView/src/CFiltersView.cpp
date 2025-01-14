@@ -10,11 +10,14 @@
 #include "QClipboard"
 #include "QLineEdit"
 #include "QKeyEvent"
+#include "QActionGroup"
+#include "QTextEdit"
 
 #include "CFiltersModel.hpp"
 #include "components/settings/api/ISettingsManager.hpp"
 #include "components/log/api/CLog.hpp"
 #include "common/CQtHelper.hpp"
+#include "components/regexHistory/api/CRegexHistoryTextEdit.hpp"
 
 #include "CFilterItemDelegate.hpp"
 #include "../api/CFiltersView.hpp"
@@ -63,18 +66,18 @@ CFiltersView::CFiltersView(QWidget *parent):
     });
 }
 
-void CFiltersView::setRegexInputField(QLineEdit* pRegexInputField)
+void CFiltersView::setRegexInputField(CRegexHistoryTextEdit* pRegexTextEdit)
 {
-    mpRegexInputField = pRegexInputField;
+    mpRegexTextEdit = pRegexTextEdit;
 }
 
 void CFiltersView::copySelectedRowToClipboard()
 {
     QClipboard* pClipboard = QApplication::clipboard();
 
-    if(nullptr != pClipboard && nullptr != mpRegexInputField)
+    if(nullptr != pClipboard && nullptr != mpRegexTextEdit)
     {
-        pClipboard->setText(mpRegexInputField->selectedText());
+        pClipboard->setText(mpRegexTextEdit->textCursor().selectedText());
     }
 }
 
@@ -85,10 +88,10 @@ void CFiltersView::currentChanged(const QModelIndex &current, const QModelIndex 
         auto pTreeItem = static_cast<CTreeItem*>(current.internalPointer());
 
         if(nullptr != pTreeItem &&
-           nullptr != mpRegexInputField)
+           nullptr != mpRegexTextEdit)
         {
             auto range = pTreeItem->data(static_cast<int>(eRegexFiltersColumn::Range)).get<tIntRange>();
-            mpRegexInputField->setSelection(range.from, range.to - range.from + 1);
+            mpRegexTextEdit->setSelection(range.from, range.to - range.from + 1);
         }
     }
 
@@ -266,9 +269,9 @@ void CFiltersView::keyPressEvent ( QKeyEvent * event )
 {
     if(true == NShortcuts::isEnter(event))
     {
-        if(nullptr != mpRegexInputField)
+        if(nullptr != mpRegexTextEdit)
         {
-            mpRegexInputField->setFocus();
+            mpRegexTextEdit->setFocus();
         }
     }
     else if(true == NShortcuts::isCopyShortcut(event))
@@ -324,9 +327,9 @@ void CFiltersView::handleSettingsManagerChange()
             pAction->setShortcut(QKeySequence(tr("Enter")));
             connect(pAction, &QAction::triggered, [this]()
             {
-                if(nullptr != mpRegexInputField)
+                if(nullptr != mpRegexTextEdit)
                 {
-                    mpRegexInputField->setFocus();
+                    mpRegexTextEdit->setFocus();
                 }
             });
             contextMenu.addAction(pAction);
@@ -392,8 +395,6 @@ void CFiltersView::handleSettingsManagerChange()
 
         {
             QMenu* pSubMenu = new QMenu("Completion settings", this);
-
-//            TSettingItem<bool> mSetting_FiltersCompletion_SearchPolicy; // 0 - startWith; 1 - contains
 
             {
                 QAction* pAction = new QAction("Case sensitive", this);
@@ -544,7 +545,7 @@ void CFiltersView::handleSettingsManagerChange()
 
     connect( getSettingsManager().get(),
              &ISettingsManager::regexFiltersColumnsVisibilityMapChanged,
-             [this](const tRegexFiltersColumnsVisibilityMap&)
+             this, [this](const tRegexFiltersColumnsVisibilityMap&)
     {
         updateColumnsVisibility();
         updateWidth();
@@ -557,6 +558,6 @@ PUML_PACKAGE_BEGIN(DMA_FiltersView_API)
         PUML_INHERITANCE_CHECKED(CSettingsManagerClient, extends)
         PUML_COMPOSITION_DEPENDENCY_CHECKED(CFilterItemDelegate, 1, 1, contains)
         PUML_AGGREGATION_DEPENDENCY_CHECKED(CFiltersModel, 1, 1, uses)
-        PUML_AGGREGATION_DEPENDENCY_CHECKED(QLineEdit, 1, 1, regex input field)
+        PUML_AGGREGATION_DEPENDENCY_CHECKED(CRegexHistoryTextEdit, 1, 1, regex input field)
     PUML_CLASS_END()
 PUML_PACKAGE_END()

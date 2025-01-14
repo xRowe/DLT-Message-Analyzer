@@ -19,14 +19,14 @@ class IDLTMessageAnalyzerControllerConsumer;
  */
 class CSubConsumer : public IDLTMessageAnalyzerControllerConsumer
 {
-   Q_OBJECT
+    Q_OBJECT
 public:
-   typedef std::function<void(const tProgressNotificationData&)> tCallback;
-   CSubConsumer(const tDLTMessageAnalyzerControllerPtr& pController);
-   void setCallback(const tCallback& callback);
-   void progressNotification( const tProgressNotificationData& progressNotificationData ) override;
+    typedef std::function<void(const tProgressNotificationData&)> tCallback;
+    CSubConsumer(const tDLTMessageAnalyzerControllerPtr& pController);
+    void setCallback(const tCallback& callback);
+    void progressNotification( const tProgressNotificationData& progressNotificationData ) override;
 private:
-   tCallback mCallback;
+    tCallback mCallback;
 };
 
 /**
@@ -80,7 +80,10 @@ private:// fields
                      const tFileWrapperPtr& pFile,
                      const QRegularExpression& regex_,
                      const int& numberOfThreads_,
-                     const tRegexScriptingMetadata& regexScriptingMetadata_);
+                     const tRegexScriptingMetadata& regexScriptingMetadata_,
+                     const tSearchResultColumnsVisibilityMap& searchColumns_,
+                     const QString& regexStr_,
+                     const QStringList& selectedAlises_);
         tRequestId requestId;
         std::weak_ptr<IDLTMessageAnalyzerControllerConsumer> pClient;
         tRequestId subRequestId;
@@ -92,6 +95,9 @@ private:// fields
         tRegexScriptingMetadata regexScriptingMetadata;
         int numberOfThreads;
         bool bContinuousModeActive;
+        tSearchResultColumnsVisibilityMap searchColumns;
+        QString regexStr;
+        QStringList selectedAlises;
     };
 
     tRequestDataMap mRequestDataMap;

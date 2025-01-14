@@ -9,13 +9,14 @@
 #include "memory"
 
 #include <QObject>
+#include <QTimer>
 
 #include "plugininterface.h"
 
 #include "common/Definitions.hpp"
 
 #define DLT_MESSAGE_ANALYZER_NAME "DLT-Message-Analyzer"
-#define DLT_MESSAGE_ANALYZER_PLUGIN_VERSION "1.0.24"
+#define DLT_MESSAGE_ANALYZER_PLUGIN_VERSION "1.0.29"
 #define DLT_MESSAGE_ANALYZER_PLUGIN_AUTHOR "Vladyslav Goncharuk <svlad1990@gmail.com>"
 
 class CDLTMessageAnalyzer;
@@ -28,9 +29,13 @@ class CGroupedViewComponent;
 class CPatternsViewComponent;
 class CFiltersViewComponent;
 class CUMLViewComponent;
+class CPlotViewComponent;
 class CLogoComponent;
 class CLogsWrapperComponent;
+class CRegexHistoryComponent;
 class CSettingsComponent;
+class CAnalyzerComponent;
+class CCoverageNoteComponent;
 class Form;
 
 namespace DMA
@@ -91,7 +96,7 @@ private: // methods
     bool initConnections(QStringList) final override { return true; }
     bool controlMsg(int, QDltMsg &) final override { return true; }
     bool stateChanged(int index, QDltConnection::QDltConnectionState connectionState,QString hostname) final override;
-    bool autoscrollStateChanged(bool) final override { return true; }
+    bool autoscrollStateChanged(bool) final override;
 
 #ifndef PLUGIN_API_COMPATIBILITY_MODE_1_0_0
     void initMainTableView(QTableView* pMainTableView) override;
@@ -145,9 +150,15 @@ private: // members
     std::shared_ptr<CPatternsViewComponent> mpPatternsViewComponent;
     std::shared_ptr<CFiltersViewComponent> mpFiltersViewComponent;
     std::shared_ptr<CUMLViewComponent> mpUMLViewComponent;
+    std::shared_ptr<CPlotViewComponent> mpPlotViewComponent;
     std::shared_ptr<CLogoComponent> mpLogoComponent;
     std::shared_ptr<CLogsWrapperComponent> mpLogsWrapperComponent;
+    std::shared_ptr<CRegexHistoryComponent> mpRegexHistoryComponent;
+    std::shared_ptr<CCoverageNoteComponent> mpCoverageNoteComponent;
     std::shared_ptr<CSettingsComponent> mpSettingsComponent;
+    std::shared_ptr<CAnalyzerComponent> mpAnalyzerComponent;
+
+    QTimer mDisconnectionTimer;
 
 #ifndef PLUGIN_API_COMPATIBILITY_MODE_1_0_0
     QTableView* mpMainTableView;

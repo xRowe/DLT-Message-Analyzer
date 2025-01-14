@@ -52,6 +52,32 @@ class "CTableMemoryJumper"
 
 }
 
+package "DMA_CoverageNote" #DDDDDD
+{
+
+class "CCoverageNoteProvider"
+{
+}
+
+class "CoverageNoteTableModel"
+{
+}
+
+}
+
+package "DMA_CoverageNote_API" #DDDDDD
+{
+
+class "CCoverageNoteComponent"
+{
+}
+
+class "ICoverageNoteProvider"
+{
+}
+
+}
+
 package "DMA_FiltersView" #DDDDDD
 {
 
@@ -141,7 +167,7 @@ class "IFileWrapper"
     + {abstract} virtual bool cacheMsgWrapper( const int& msgId, const tMsgWrapperPtr& pMsgWrapper ) = 0
     + {abstract} virtual bool getSubFilesHandlingStatus() const = 0
     + {abstract} virtual bool isFiltered() const = 0
-    + {abstract} virtual int getMsgRealPos(int msgId) const = 0
+    + {abstract} virtual int getMsgIdFromIndexInMainTable(int msgIdxInMainTable) const = 0
     + {abstract} virtual int getNumberOfFiles() const = 0
     + {abstract} virtual int size() const = 0
     + {abstract} virtual int sizeNonFiltered() const = 0
@@ -211,6 +237,15 @@ class "CUMLView"
 
 }
 
+package "DMA_PlotView_API" #DDDDDD
+{
+
+class "CPlotViewComponent"
+{
+}
+
+}
+
 package "DMA_Plugin" #DDDDDD
 {
 
@@ -224,6 +259,32 @@ package "DMA_Plugin_API" #DDDDDD
 {
 
 class "Form"
+{
+}
+
+}
+
+package "DMA_RegexHistory" #DDDDDD
+{
+
+class "CExtendedCompleter"
+{
+}
+
+class "CRegexHistoryProvider"
+{
+}
+
+}
+
+package "DMA_RegexHistory_API" #DDDDDD
+{
+
+class "CRegexHistoryTextEdit"
+{
+}
+
+class "IRegexHistoryProvider"
 {
 }
 
@@ -295,6 +356,10 @@ class "QLineEdit"
 {
 }
 
+class "QListView"
+{
+}
+
 class "QObject"
 {
 }
@@ -323,6 +388,10 @@ class "QTableView"
 {
 }
 
+class "QTextEdit"
+{
+}
+
 class "QThread"
 {
 }
@@ -341,12 +410,39 @@ class "QWidget"
 
 }
 
+package "qcustomplot" #DDDDDD
+{
+
+class "QCPAxisRect"
+{
+}
+
+class "QCPGraph"
+{
+}
+
+class "QCPLayerable"
+{
+}
+
+class "QCPLegend"
+{
+}
+
+class "QCustomPlot"
+{
+}
+
+}
+
 '====================Inheritance section====================
 QObject <|-- CDLTRegexAnalyzerWorker : extends
 QObject <|-- IDLTMessageAnalyzerController : extends
 QObject <|-- IDLTMessageAnalyzerControllerConsumer : extends
 QObject <|-- CBGColorAnimation : extends
 QObject <|-- CRegexDirectoryMonitor : extends
+QAbstractTableModel <|-- CoverageNoteTableModel : implements
+QObject <|-- ICoverageNoteProvider : extends
 QStyledItemDelegate <|-- CFilterItemDelegate : extends
 QTreeView <|-- CFiltersView : implements
 QAbstractItemModel <|-- IFiltersModel : implements
@@ -364,20 +460,35 @@ QWidget <|-- CImageViewer : extends
 QWidget <|-- CUMLView : extends
 QObject <|-- DLTMessageAnalyzerPlugin : extends
 QWidget <|-- Form : extends
+QCompleter <|-- CExtendedCompleter : extends
+QTextEdit <|-- CRegexHistoryTextEdit : extends
+QObject <|-- IRegexHistoryProvider : extends
 QStyledItemDelegate <|-- CSearchResultHighlightingDelegate : extends
 QAbstractTableModel <|-- CSearchResultModel : implements
 QTableView <|-- CSearchResultView : extends
 QObject <|-- CSearchViewComponent : extends
 QObject <|-- ISettingsManager : extends
+QObject <|-- QCPAxisRect : extends
+QObject <|-- QCPGraph : extends
+QObject <|-- QCPLayerable : extends
+QObject <|-- QCPLegend : extends
+QWidget <|-- QCustomPlot : extends
 
 '====================Dependencies section====================
 CMTAnalyzer "1" *-- "*" QThread : contains
 CBGColorAnimation "1" o-- "1" QWidget : animation widget
 CRegexDirectoryMonitor "1" *-- "1" QFileSystemWatcher : contains
 CTableMemoryJumper "1" o-- "1" QTableView : contains
+CCoverageNoteProvider "1" o-- "1" QLineEdit : passes to nested entities
+CCoverageNoteProvider "1" o-- "1" QPushButton : passes to nested entities
+CCoverageNoteProvider "1" o-- "2" QTableView : passes to nested entities
+CCoverageNoteProvider "1" o-- "4" QTextEdit : passes to nested entities
+CCoverageNoteComponent "1" o-- "1" QLineEdit : passes to nested entities
+CCoverageNoteComponent "1" o-- "1" QPushButton : passes to nested entities
+CCoverageNoteComponent "1" o-- "2" QTableView : passes to nested entities
+CCoverageNoteComponent "1" o-- "4" QTextEdit : passes to nested entities
 CFilterItemDelegate "1" o-- "1" QCompleter : uses
 CFilterItemDelegate "1" o-- "1" QTreeView : parent view
-CFiltersView "1" o-- "1" QLineEdit : regex input field
 CConsoleCtrl "1" o-- "1" QPlainTextEdit : console text edit
 CConsoleCtrl "1" o-- "1" QTabWidget : console view tab widget
 CConsoleCtrl "1" o-- "1" QWidget : console tab
@@ -385,5 +496,12 @@ CConsoleInputProcessor "1" o-- "1" QLineEdit : console input
 CPatternsView "1" o-- "1" QLineEdit : patterns search input
 CImageViewer "1" *-- "1" QImage : contains
 CUMLView "1" *-- "2" QProcess : contains
+CPlotViewComponent "1" o-- "1" QPushButton : uses
+DLTMessageAnalyzerPlugin "1" *-- "1" QTimer : contains
+CRegexHistoryProvider "1" *-- "1" QListView : creates
+CRegexHistoryTextEdit "1" o-- "1" QCompleter : uses
+CSearchResultView "1" o-- "1" QTabWidget : uses main tab widget
+CSearchResultView "1" o-- "1" QTableView : uses dlt-viewer main table view
+CSearchViewComponent "1" o-- "1" QTabWidget : uses
 
 @enduml

@@ -238,8 +238,8 @@ CPatternsModel::~CPatternsModel()
 
 void CPatternsModel::updateView()
 {
-   emit dataChanged( index(0,0), index ( rowCount(), columnCount()) );
-   emit layoutChanged();
+    emit dataChanged( index(0,0), index ( rowCount(), columnCount()) );
+    emit layoutChanged();
 }
 
 QModelIndex CPatternsModel::index(int row, int column,
@@ -400,7 +400,7 @@ QVariant CPatternsModel::data(const QModelIndex &index, int role) const
             result = Qt::AlignLeft;
         }
     }
-    else if (role == Qt::BackgroundColorRole)
+    else if (role == Qt::BackgroundRole)
     {
         result = QColor(0,0,0,0);
     }
@@ -417,7 +417,7 @@ Qt::ItemFlags CPatternsModel::flags(const QModelIndex &index) const
         if ( index.column() == static_cast<int>(ePatternsColumn::Default) ||
              index.column() == static_cast<int>(ePatternsColumn::Combine))
         {
-            result = QAbstractItemModel::flags(index) | Qt::ItemIsTristate;
+            result = QAbstractItemModel::flags(index) | Qt::ItemIsAutoTristate;
         }
         else
         {
@@ -838,9 +838,9 @@ void CPatternsModel::updatePatternsInPersistency()
 {
     if(nullptr != mpRootItem)
     {
-        ISettingsManager::tAliasItemVec aliasVec;
+        ISettingsManager::tAliasItemMap aliasMap;
 
-        auto preVisitFunction = [&aliasVec](const tTreeItem* pItem)
+        auto preVisitFunction = [&aliasMap](const tTreeItem* pItem)
         {
             if(nullptr != pItem)
             {
@@ -858,7 +858,7 @@ void CPatternsModel::updatePatternsInPersistency()
                         const QString& alias = pItem->data(static_cast<int>(ePatternsColumn::Alias)).get<QString>();
 
                         ISettingsManager::tAliasItem aliasItem(isDefault == Qt::Checked, alias, regex);
-                        aliasVec.push_back(aliasItem);
+                        aliasMap.insert(alias, aliasItem);
                     }
                 }
             }
@@ -869,10 +869,10 @@ void CPatternsModel::updatePatternsInPersistency()
         mpRootItem->visit(preVisitFunction, CTreeItem::tVisitFunction(), false);
 
         // if something has changed
-        if(aliasVec != getSettingsManager()->getAliases())
+        if(aliasMap != getSettingsManager()->getAliases())
         {
             // let's update them in the persistency
-            getSettingsManager()->setAliases( aliasVec );
+            getSettingsManager()->setAliases( aliasMap );
         }
     }
 }

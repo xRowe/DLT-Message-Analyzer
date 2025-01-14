@@ -10,7 +10,7 @@
 
 #include "CSearchResultHighlightingDelegate.hpp"
 #include "common/Definitions.hpp"
-#include "CSearchResultModel.hpp"
+#include "../api/ISearchResultModel.hpp"
 #include "components/settings/api/ISettingsManager.hpp"
 
 #include "DMA_Plantuml.hpp"
@@ -22,9 +22,12 @@
 #include <QElapsedTimer>
 #endif
 
+const QColor sCustomHighlightingColor(237,235,178);
+
 CSearchResultHighlightingDelegate::CSearchResultHighlightingDelegate(QObject *parent):
 QStyledItemDelegate(parent),
-mbMarkTimestampWithBold(false)
+mbMarkTimestampWithBold(false),
+mSearchResultColumnsSearchMap()
 {
 }
 
@@ -36,7 +39,8 @@ CSearchResultHighlightingDelegate::~CSearchResultHighlightingDelegate()
 void drawText(const QString& inputStr,
               QPainter *painter,
               const QStyleOptionViewItem &option,
-              bool bold)
+              bool bold,
+              bool bCustomBackgroundHighlighting)
 {
     int baseShift = 0;
 
@@ -57,6 +61,22 @@ void drawText(const QString& inputStr,
     }
     else
     {
+        if(false == bCustomBackgroundHighlighting)
+        {
+            if(isDarkMode())
+            {
+                painter->fillRect(option.rect, option.palette.window());
+            }
+            else
+            {
+               painter->fillRect(option.rect, QColor(255,255,255));
+            }
+        }
+        else
+        {
+            painter->fillRect(option.rect, sCustomHighlightingColor);
+        }
+
         QPalette::ColorGroup cg = QPalette::Normal;
         painter->setPen(option.palette.color(cg, QPalette::Text));
 
@@ -143,7 +163,7 @@ static void collectDrawData(const QString& inputStr,
 
             if(true == isExplicitColor)
             {
-                drawData.color = range.color;
+                drawData.color = range.color_code;
             }
             else
             {
@@ -153,7 +173,7 @@ static void collectDrawData(const QString& inputStr,
                 }
                 else
                 {
-                    drawData.color = range.color;
+                    drawData.color = range.color_code;
                 }
             }
 
@@ -161,7 +181,7 @@ static void collectDrawData(const QString& inputStr,
         }
         else
         {
-            drawData.color = QColor(0,0,0);
+            drawData.color = option.palette.text().color();
             drawData.isBold = false;
         }
     }
@@ -216,11 +236,30 @@ shift += fm.horizontalAdvance(drawDataItem.subStr);
 
 static void drawText( const tDrawDataPack& drawDataPack,
                       QPainter *painter,
-                      const QStyleOptionViewItem& option )
+                      const QStyleOptionViewItem& option,
+                      bool bCustomBackgroundHighlighting )
 {
     if(true == drawDataPack.isSelected)
     {
         painter->fillRect(option.rect, option.palette.highlight());
+    }
+    else
+    {
+        if(false == bCustomBackgroundHighlighting)
+        {
+            if(isDarkMode())
+            {
+                painter->fillRect(option.rect, option.palette.window());
+            }
+            else
+            {
+               painter->fillRect(option.rect, QColor(255,255,255));
+            }
+        }
+        else
+        {
+            painter->fillRect(option.rect, sCustomHighlightingColor);
+        }
     }
 
     for(const auto& drawDataItem : drawDataPack.drawDataList)
@@ -252,7 +291,7 @@ static void drawText( const tDrawDataPack& drawDataPack,
 }
 
 static void collectDrawDataPack(const QString& inputStr,
-                                const tHighlightingRangeSet& highlightingData,
+                                const tHighlightingRangeVec& highlightingData,
                                 tDrawDataPack& drawDataPack,
                                 const QStyleOptionViewItem& option,
                                 bool isMonoColorHighlighting,
@@ -263,8 +302,10 @@ static void collectDrawDataPack(const QString& inputStr,
         drawDataPack.isSelected = true;
     }
 
+    tHighlightingRangeSet highlightingRangeSet(highlightingData.begin(), highlightingData.end());
+
     int i = 0;
-    for(auto it = highlightingData.begin(); it != highlightingData.end(); ++it)
+    for(auto it = highlightingRangeSet.begin(); it != highlightingRangeSet.end(); ++it)
     {
         const auto& range = *it;
 
@@ -275,7 +316,7 @@ static void collectDrawDataPack(const QString& inputStr,
                 collectDrawData( inputStr,
                                  drawDataPack,
                                  option,
-                                 tHighlightingRange(0, range.from - 1, range.color, range.explicitColor),
+                                 tHighlightingRange(0, range.from - 1, range.color_code, range.explicitColor),
                                  false,
                                  isMonoColorHighlighting,
                                  regexMonoHighlightingColor);
@@ -284,7 +325,7 @@ static void collectDrawDataPack(const QString& inputStr,
             collectDrawData( inputStr,
                              drawDataPack,
                              option,
-                             tHighlightingRange( range.from, range.to, range.color, range.explicitColor ),
+                             tHighlightingRange( range.from, range.to, range.color_code, range.explicitColor ),
                              true,
                              isMonoColorHighlighting,
                              regexMonoHighlightingColor );
@@ -300,7 +341,7 @@ static void collectDrawDataPack(const QString& inputStr,
                 collectDrawData( inputStr,
                                  drawDataPack,
                                  option,
-                                 tHighlightingRange(prevRange.to + 1, range.from - 1, range.color, range.explicitColor),
+                                 tHighlightingRange(prevRange.to + 1, range.from - 1, range.color_code, range.explicitColor),
                                  false,
                                  isMonoColorHighlighting,
                                  regexMonoHighlightingColor );
@@ -309,20 +350,20 @@ static void collectDrawDataPack(const QString& inputStr,
             collectDrawData( inputStr,
                              drawDataPack,
                              option,
-                             tHighlightingRange( range.from, range.to, range.color, range.explicitColor ),
+                             tHighlightingRange( range.from, range.to, range.color_code, range.explicitColor ),
                              true,
                              isMonoColorHighlighting,
                              regexMonoHighlightingColor );
         }
 
-        if(i == static_cast<int>(highlightingData.size() - 1)) // last element
+        if(i == static_cast<int>(highlightingRangeSet.size() - 1)) // last element
         {
             if( range.to < inputStr.size() - 1 )
             {
                 collectDrawData( inputStr,
                                  drawDataPack,
                                  option,
-                                 tHighlightingRange(range.to + 1, inputStr.size() - 1, range.color, range.explicitColor),
+                                 tHighlightingRange(range.to + 1, inputStr.size() - 1, range.color_code, range.explicitColor),
                                  false,
                                  isMonoColorHighlighting,
                                  regexMonoHighlightingColor );
@@ -339,7 +380,8 @@ static void drawHighlightedText(eSearchResultColumn field,
                     QPainter *painter,
                     const QStyleOptionViewItem& option,
                     bool isMonoColorHighlighting,
-                    const QColor& regexMonoHighlightingColor)
+                    const QColor& regexMonoHighlightingColor,
+                    bool bCustomBackgroundHighlighting)
 {
     tDrawDataPack drawDataPack;
 
@@ -375,7 +417,7 @@ static void drawHighlightedText(eSearchResultColumn field,
             SEND_MSG(QString("calculateShifts - %1").arg(timer.elapsed()));
             timer.restart();
 #endif
-            drawText(drawDataPack, painter, option);
+            drawText(drawDataPack, painter, option, bCustomBackgroundHighlighting);
 #ifdef DEBUG_CSearchResultHighlightingDelegate
             SEND_MSG(QString("drawText - %1").arg(timer.elapsed()));
             timer.invalidate();
@@ -383,16 +425,16 @@ static void drawHighlightedText(eSearchResultColumn field,
         }
         else
         {
-            drawText(inputStr,painter,option,false);
+            drawText(inputStr, painter, option, false, bCustomBackgroundHighlighting);
         }
     }
     else
     {
-        drawText(inputStr,painter,option,false);
+        drawText(inputStr, painter, option, false, bCustomBackgroundHighlighting);
     }
 
     {
-        painter->setPen(QColor(0,0,0));
+        painter->setPen(option.palette.text().color());
         auto font = painter->font();
         font.setBold(false);
         painter->setFont(font);
@@ -413,13 +455,23 @@ void CSearchResultHighlightingDelegate::paint(QPainter *painter,
 
     //SEND_MSG(QString("CSearchResultHighlightingDelegate::paint: row %1").arg(index.row()));
 
-    const auto* pModel = dynamic_cast<const CSearchResultModel*>(index.model());
+    const auto* pModel = dynamic_cast<const ISearchResultModel*>(index.model());
 
     if(nullptr != pModel)
     {
-        painter->save();
-
         auto stringData = pModel->data(index, Qt::DisplayRole).value<QString>();
+
+        bool bCustomBackgroundHighlighting = false;
+
+        const auto& customHighlightingRows = pModel->getHighlightedRows();
+
+        const auto& matchData = pModel->getFoundMatchesItemPack(index);
+        const auto& msgId = matchData.getItemMetadata().msgId;
+
+        if(customHighlightingRows.find(msgId) != customHighlightingRows.end())
+        {
+            bCustomBackgroundHighlighting = true;
+        }
 
         QStyleOptionViewItem opt = option;
 
@@ -428,78 +480,84 @@ void CSearchResultHighlightingDelegate::paint(QPainter *painter,
         auto field = static_cast<eSearchResultColumn>(index.column());
 
         Qt::CheckState UML_Applicability = index.sibling(index.row(), static_cast<int>(eSearchResultColumn::UML_Applicability)).data(Qt::CheckStateRole).value<Qt::CheckState>();
+        Qt::CheckState PlotView_Applicability = index.sibling(index.row(), static_cast<int>(eSearchResultColumn::PlotView_Applicability)).data(Qt::CheckStateRole).value<Qt::CheckState>();
 
-        if(Qt::Checked == UML_Applicability)
+        if(Qt::Checked == UML_Applicability || Qt::Checked == PlotView_Applicability)
         {
             painter->fillRect(opt.rect, QBrush(QColor(200,200,200)));
         }
-
-        switch(static_cast<eSearchResultColumn>(index.column()))
+        else
         {
-            case eSearchResultColumn::Apid:
-            case eSearchResultColumn::Ctid:
-            case eSearchResultColumn::Payload:
+            if(false == bCustomBackgroundHighlighting)
             {
-#ifdef DEBUG_CSearchResultHighlightingDelegate
-                SEND_MSG(QString("CSearchResultHighlightingDelegate::drawHighlightedText(start:<index:row-%1:col-%2>)")
-                         .arg(index.row())
-                         .arg(index.column()));
-#endif
-                const auto& matchData = pModel->getFoundMatchesItemPack(index);
-
-                bool isMonoColorHighlighting = getSettingsManager()->getSearchResultMonoColorHighlighting();
-                const QColor& regexMonoHighlightingColor = getSettingsManager()->getRegexMonoHighlightingColor();
-
-                drawHighlightedText(field,
-                                    matchData,
-                                    stringData,
-                                    painter, opt,
-                                    isMonoColorHighlighting,
-                                    regexMonoHighlightingColor);
-#ifdef DEBUG_CSearchResultHighlightingDelegate
-                SEND_MSG(QString("CSearchResultHighlightingDelegate::drawHighlightedText(end:<index:row-%2:col-%3>): took %1 ms")
-                         .arg(elapsedTimer.elapsed())
-                         .arg(index.row())
-                         .arg(index.column()));
-#endif
+                if(isDarkMode())
+                {
+                    painter->fillRect(option.rect, option.palette.window());
+                }
+                else
+                {
+                   painter->fillRect(option.rect, QColor(255,255,255));
+                }
             }
-                break;
-            case eSearchResultColumn::Args:
-            case eSearchResultColumn::Last:
-            case eSearchResultColumn::Mode:
-            case eSearchResultColumn::Time:
-            case eSearchResultColumn::Type:
-            case eSearchResultColumn::Count:
-            case eSearchResultColumn::Ecuid:
-            case eSearchResultColumn::Index:
-            case eSearchResultColumn::Subtype:
-            case eSearchResultColumn::SessionId:
+            else
             {
-                drawText( stringData, painter, opt, false );
+                painter->fillRect(option.rect, sCustomHighlightingColor);
             }
-            break;
-            case eSearchResultColumn::Timestamp:
-            {
-                drawText( stringData, painter, opt, mbMarkTimestampWithBold );
-            }
-            break;
-            case eSearchResultColumn::UML_Applicability:
-            {
-                QStyleOptionViewItem viewItemOption = option;
-
-                const int textMargin = QApplication::style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 1;
-                QRect newRect = QStyle::alignedRect(viewItemOption.direction, Qt::AlignCenter,
-                                                    QSize(viewItemOption.decorationSize.width() + 5, option.decorationSize.height()),
-                                                    QRect(viewItemOption.rect.x() + textMargin, option.rect.y(),
-                                                          viewItemOption.rect.width() - (2 * textMargin), viewItemOption.rect.height()));
-                viewItemOption.rect = newRect;
-
-                QStyledItemDelegate::paint(painter, viewItemOption, index);
-            }
-            break;
         }
 
-        painter->restore();
+        if(static_cast<eSearchResultColumn>(index.column()) == eSearchResultColumn::UML_Applicability ||
+           static_cast<eSearchResultColumn>(index.column()) == eSearchResultColumn::PlotView_Applicability)
+        {
+            QStyleOptionViewItem viewItemOption = option;
+
+            const int textMargin = QApplication::style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 1;
+            QRect newRect = QStyle::alignedRect(viewItemOption.direction, Qt::AlignCenter,
+                                                QSize(viewItemOption.decorationSize.width() + 5, option.decorationSize.height()),
+                                                QRect(viewItemOption.rect.x() + textMargin, option.rect.y(),
+                                                      viewItemOption.rect.width() - (2 * textMargin), viewItemOption.rect.height()));
+            viewItemOption.rect = newRect;
+
+            QStyledItemDelegate::paint(painter, viewItemOption, index);
+        }
+        else if(static_cast<eSearchResultColumn>(index.column()) == eSearchResultColumn::Timestamp &&
+                true == mbMarkTimestampWithBold)
+        {
+            drawText( stringData, painter, opt, mbMarkTimestampWithBold, bCustomBackgroundHighlighting );
+        }
+        else
+        {
+            auto foundSearchColumn = mSearchResultColumnsSearchMap.find(static_cast<eSearchResultColumn>(index.column()));
+
+            if(foundSearchColumn != mSearchResultColumnsSearchMap.end() && true == foundSearchColumn.value())
+            {
+#ifdef DEBUG_CSearchResultHighlightingDelegate
+               SEND_MSG(QString("CSearchResultHighlightingDelegate::drawHighlightedText(start:<index:row-%1:col-%2>)")
+                            .arg(index.row())
+                            .arg(index.column()));
+#endif
+
+               bool isMonoColorHighlighting = getSettingsManager()->getSearchResultMonoColorHighlighting();
+               const QColor& regexMonoHighlightingColor = getSettingsManager()->getRegexMonoHighlightingColor();
+
+               drawHighlightedText(field,
+                                   matchData,
+                                   stringData,
+                                   painter, opt,
+                                   isMonoColorHighlighting,
+                                   regexMonoHighlightingColor,
+                                   bCustomBackgroundHighlighting);
+#ifdef DEBUG_CSearchResultHighlightingDelegate
+               SEND_MSG(QString("CSearchResultHighlightingDelegate::drawHighlightedText(end:<index:row-%2:col-%3>): took %1 ms")
+                            .arg(elapsedTimer.elapsed())
+                            .arg(index.row())
+                            .arg(index.column()));
+#endif
+            }
+            else
+            {
+               drawText( stringData, painter, opt, false, bCustomBackgroundHighlighting );
+            }
+        }
     }
 
 #ifdef DEBUG_CSearchResultHighlightingDelegate
@@ -518,76 +576,60 @@ QSize CSearchResultHighlightingDelegate::sizeHint(const QStyleOptionViewItem &op
 
     auto column = static_cast<eSearchResultColumn>(index.column());
 
-    switch(column)
+    auto foundSearchColumn = mSearchResultColumnsSearchMap.find(static_cast<eSearchResultColumn>(column));
+
+    if(foundSearchColumn != mSearchResultColumnsSearchMap.end() && true == foundSearchColumn.value())
     {
-        case eSearchResultColumn::Apid:
-        case eSearchResultColumn::Ctid:
-        case eSearchResultColumn::Payload:
+        const auto* pModel = dynamic_cast<const ISearchResultModel*>(index.model());
+
+        if(nullptr != pModel)
         {
-            const auto* pModel = dynamic_cast<const CSearchResultModel*>(index.model());
+            const auto& matchData = pModel->getFoundMatchesItemPack(index);
 
-            if(nullptr != pModel)
+            tDrawDataPack drawDataPack;
+
+            drawDataPack.alignment = option.displayAlignment;
+
+            const auto& highlightingInfo = matchData.getItemMetadata().highlightingInfoMultiColor;
+            auto foundHighlightingInfoItem = highlightingInfo.find(column);
+
+            if(highlightingInfo.end() != foundHighlightingInfoItem)
             {
-                const auto& matchData = pModel->getFoundMatchesItemPack(index);
+               const auto& highlightingData = foundHighlightingInfoItem.value();
 
-                tDrawDataPack drawDataPack;
+               if(false == highlightingData.empty())
+               {
+                    auto inputStr = pModel->data(index, Qt::DisplayRole).value<QString>();
 
-                drawDataPack.alignment = option.displayAlignment;
+                    bool isMonoColorHighlighting = getSettingsManager()->getSearchResultMonoColorHighlighting();
+                    const QColor& regexMonoHighlightingColor = getSettingsManager()->getRegexMonoHighlightingColor();
 
-                const auto& highlightingInfo = matchData.getItemMetadata().highlightingInfoMultiColor;
-                auto foundHighlightingInfoItem = highlightingInfo.find(column);
+                    collectDrawDataPack(inputStr,
+                                        highlightingData,
+                                        drawDataPack,
+                                        option,
+                                        isMonoColorHighlighting,
+                                        regexMonoHighlightingColor);
 
-                if(highlightingInfo.end() != foundHighlightingInfoItem)
-                {
-                    const auto& highlightingData = foundHighlightingInfoItem.value();
+                    int shift = calculateShifts(drawDataPack, option);
 
-                    if(false == highlightingData.empty())
-                    {
-                        auto inputStr = pModel->data(index, Qt::DisplayRole).value<QString>();
-
-                        bool isMonoColorHighlighting = getSettingsManager()->getSearchResultMonoColorHighlighting();
-                        const QColor& regexMonoHighlightingColor = getSettingsManager()->getRegexMonoHighlightingColor();
-
-                        collectDrawDataPack(inputStr,
-                                            highlightingData,
-                                            drawDataPack,
-                                            option,
-                                            isMonoColorHighlighting,
-                                            regexMonoHighlightingColor);
-
-                        int shift = calculateShifts(drawDataPack, option);
-
-                        result = QStyledItemDelegate::sizeHint(option, index);
-                        result.setWidth(shift);
-                    }
-                    else
-                    {
-                        result = QStyledItemDelegate::sizeHint(option, index);
-                    }
-                }
-                else
-                {
                     result = QStyledItemDelegate::sizeHint(option, index);
-                }
+                    result.setWidth(shift);
+               }
+               else
+               {
+                    result = QStyledItemDelegate::sizeHint(option, index);
+               }
+            }
+            else
+            {
+               result = QStyledItemDelegate::sizeHint(option, index);
             }
         }
-            break;
-        case eSearchResultColumn::Args:
-        case eSearchResultColumn::Last:
-        case eSearchResultColumn::Mode:
-        case eSearchResultColumn::Time:
-        case eSearchResultColumn::Type:
-        case eSearchResultColumn::Count:
-        case eSearchResultColumn::Ecuid:
-        case eSearchResultColumn::Index:
-        case eSearchResultColumn::Subtype:
-        case eSearchResultColumn::SessionId:
-        case eSearchResultColumn::Timestamp:
-        case eSearchResultColumn::UML_Applicability:
-        {
-            result = QStyledItemDelegate::sizeHint(option, index);
-        }
-        break;
+    }
+    else
+    {
+        result = QStyledItemDelegate::sizeHint(option, index);
     }
 
     return result;
@@ -599,16 +641,25 @@ void CSearchResultHighlightingDelegate::handleSettingsManagerChange()
 
     connect( getSettingsManager().get(),
              &ISettingsManager::markTimeStampWithBoldChanged,
-             [this](bool val)
+             this, [this](bool val)
     {
         mbMarkTimestampWithBold = val;
     });
+
+    mSearchResultColumnsSearchMap = getSettingsManager()->getSearchResultColumnsSearchMap();
+
+    connect( getSettingsManager().get(),
+            &ISettingsManager::searchResultColumnsSearchMapChanged,
+            this, [this](tSearchResultColumnsVisibilityMap val)
+            {
+                mSearchResultColumnsSearchMap = val;
+            });
 }
 
 PUML_PACKAGE_BEGIN(DMA_SearchView)
     PUML_CLASS_BEGIN_CHECKED(CSearchResultHighlightingDelegate)
         PUML_INHERITANCE_CHECKED(QStyledItemDelegate, extends)
         PUML_INHERITANCE_CHECKED(CSettingsManagerClient, extends)
-        PUML_COMPOSITION_DEPENDENCY_CHECKED(CSearchResultModel, 1, 1, uses)
+        PUML_COMPOSITION_DEPENDENCY_CHECKED(ISearchResultModel, 1, 1, uses)
     PUML_CLASS_END()
 PUML_PACKAGE_END()

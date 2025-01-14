@@ -6,21 +6,27 @@
 #ifndef DEFINITIONS_HPP
 #define DEFINITIONS_HPP
 
-#include "memory"
-#include "set"
+#include <list>
+#include <set>
 
 #include "QMap"
+#include "QSet"
 #include "QString"
 #include "QVector"
 #include "QMetaType"
 #include "QColor"
 #include "QPair"
+#include "TOptional.hpp"
 
 #include "../common/variant/variant.hpp"
 
+#include "BaseDefinitions.hpp"
+#include "PlotDefinitions.hpp"
+
 //#define DEBUG_BUILD
 
-extern const std::map<QString, QColor> sColorsMap;
+const std::map<QString, QColor>& getColorsMap();
+const std::list<QColor>& getColorsList();
 
 extern const QString sVARPrefix;
 extern const QString sRegexScriptingDelimiter;
@@ -29,7 +35,8 @@ extern const QString sRegexScriptingDelimiter;
 
 enum class eUML_ID
 {
-    UML_SEQUENCE_ID = 0,
+    UML_TIMESTAMP = 0,
+    UML_SEQUENCE_ID,
     UML_CLIENT ,
     UML_REQUEST,
     UML_RESPONSE,
@@ -80,23 +87,11 @@ typedef std::shared_ptr<IPatternsModel> tPatternsModelPtr;
 extern const QString sDefaultStatusText;
 extern const QString sDefaultRegexFileName;
 
-typedef std::shared_ptr<QString> tQStringPtr;
-
-struct tQStringPtrWrapper
-{
-    tQStringPtrWrapper();
-    tQStringPtrWrapper(const tQStringPtr& pString_);
-    bool operator== ( const tQStringPtrWrapper& rVal ) const;
-    bool operator< ( const tQStringPtrWrapper& rVal ) const;
-    tQStringPtr pString = nullptr;
-};
-
-Q_DECLARE_METATYPE(tQStringPtrWrapper)
-
 typedef int tMsgId;
 extern const tMsgId INVALID_MSG_ID;
+typedef std::set<tMsgId> tMsgIdSet;
 
-typedef int tHighlightingRangeItem;
+typedef std::int32_t tHighlightingRangeItem;
 
 struct tHighlightingRange
 {
@@ -105,10 +100,10 @@ struct tHighlightingRange
     bool operator< ( const tHighlightingRange& rVal ) const;
     tHighlightingRangeItem from;
     tHighlightingRangeItem to;
-    QColor color;
+    QRgb color_code;
     bool explicitColor;
 };
-typedef std::vector<tHighlightingRange> tHighlightingRangeList;
+typedef std::vector<tHighlightingRange> tHighlightingRangeVec;
 typedef std::set<tHighlightingRange> tHighlightingRangeSet;
 
 template <typename T>
@@ -160,18 +155,8 @@ struct tRange
     tRangeItem to;
 };
 
-typedef tRange<int> tIntRange;
-
+typedef tRange<int32_t> tIntRange;
 Q_DECLARE_METATYPE(tIntRange)
-
-struct tIntRangePtrWrapper
-{
-    bool operator== ( const tIntRangePtrWrapper& rVal ) const;
-    bool operator< ( const tIntRangePtrWrapper& rVal ) const;
-    const tIntRange* pRange = nullptr;
-};
-
-Q_DECLARE_METATYPE(tIntRangePtrWrapper)
 
 typedef QVector<tIntRange> tIntRangeList;
 typedef std::set<tIntRange> tIntRangeSet;
@@ -183,6 +168,7 @@ typedef std::set<tIntRange> tIntRangeSet;
 enum class eSearchResultColumn : int
 {
     UML_Applicability = 0,
+    PlotView_Applicability,
     Index,
     Time,
     Timestamp,
@@ -251,6 +237,7 @@ struct tGroupedViewMetadata
     tGroupedViewMetadata( const unsigned int timeStamp_, const tMsgId& msgId_ );
     tTimeStamp timeStamp;
     tMsgId msgId;
+    nonstd::variant<int, tMsgIdSet> relatedMsgIds = 0;
 };
 Q_DECLARE_METATYPE(tGroupedViewMetadata)
 
@@ -324,7 +311,6 @@ QString getName(eRegexFiltersRowType val);
 
 //////////////////////FILTERS VIEW DEFINITIONS END//////////////////
 
-
 struct tHighlightingGradient
 {
     tHighlightingGradient();
@@ -339,18 +325,15 @@ struct tHighlightingGradient
 // generates a set of colors from a gradient's definition
 QVector<QColor> generateColors( const tHighlightingGradient& gradient );
 
-typedef QMap<eSearchResultColumn, tHighlightingRangeSet> tHighlightingInfoMulticolor;
+typedef QMap<eSearchResultColumn, tHighlightingRangeVec> tHighlightingInfoMulticolor;
 typedef QMap<eSearchResultColumn, tIntRange> tFieldRanges;
 
 struct tFoundMatch
 {
     tFoundMatch();
-    tFoundMatch( const tQStringPtr& pMatchStr_,
+    tFoundMatch( const QString& matchStr_,
                  const tIntRange& range_,
-                 const int& idx_,
-                 const unsigned int& msgSizeBytes_,
-                 const unsigned int& timeStamp_,
-                 const tMsgId& msgId_);
+                 const int& idx_ );
 
     /**
      * @brief operator < - fake. No actually used as of now.
@@ -360,23 +343,12 @@ struct tFoundMatch
      */
     bool operator< (const tFoundMatch& rhs) const;
 
-    tQStringPtr pMatchStr;
+    QString matchStr;
     tIntRange range;
     int idx;
-    unsigned int msgSizeBytes;
-    unsigned int timeStamp;
-    tMsgId msgId;
 };
 
 Q_DECLARE_METATYPE( const tFoundMatch* )
-
-struct QOptionalColor
-{
-    bool isSet;
-    QColor color;
-    bool operator== ( const QOptionalColor& rhs ) const;
-};
-typedef QVector<QOptionalColor> QOptionalColorVec;
 
 struct tColorWrapper
 {
@@ -396,17 +368,28 @@ typedef nonstd::variant<QString,
                         int,
                         double,
                         tGroupedViewMetadata,
-                        tIntRangePtrWrapper,
+                        tIntRange,
                         const tFoundMatch*,
                         tColorWrapper,
-                        tIntRange,
                         eRegexFiltersRowType> tTreeDataItem;
 typedef tTreeDataItem tDataItem; // just to refactor less code
 QVariant toQVariant(const tDataItem& item);
 tDataItem toRegexDataItem(const QVariant& variant, const eRegexFiltersColumn& column);
 /////////////////////////////////////////////
 
-typedef std::vector<tFoundMatch> tFoundMatches;
+typedef std::vector<tFoundMatch> tFoundMatchesVec;
+
+struct tFoundMatches
+{
+    tFoundMatches();
+    tFoundMatches(const std::uint32_t& msgSizeBytes_,
+                  const unsigned int& timeStamp_,
+                  const tMsgId& msgId_);
+    tFoundMatchesVec foundMatchesVec;
+    unsigned int timeStamp;
+    tMsgId msgId;
+    std::uint32_t msgSizeBytes;
+};
 
 typedef QVector<QColor> QColorVec;
 
@@ -417,7 +400,7 @@ struct tOptional_UML_ID_Item
 {
     // optional string, which can be assigned by the user in form of e.g. <US_myService>.
     // In above case this variable will be filled in with "myService" value
-    QString UML_Custom_Value;
+    tQStringPtr pUML_Custom_Value;
 };
 
 typedef std::map<eUML_ID, tOptional_UML_ID_Item> tOptional_UML_IDMap;
@@ -426,6 +409,12 @@ struct tOptional_UML_ID
 {
     tOptional_UML_IDMap optional_UML_IDMap;
 };
+
+///////////////////////////GROUPED VIEW DATA////////////////////////////////////////
+typedef int tGroupedViewIdx;
+typedef std::map<int /*regex group index*/, tGroupedViewIdx /*specified grouped view ordering*/> tGroupedViewIndices;
+
+///////////////////////////GROUPED VIEW DATA (END)//////////////////////////////////
 
 ///////////////////////////REGEX_SCRIPTING_METADATA/////////////////////////////////
 
@@ -444,6 +433,9 @@ public:
 
     // UML_ID data
     tOptional_UML_ID optionalUML_ID;
+
+    // PlotView data
+    tPlotViewIDParameters plotViewIDParameters;
 };
 
 typedef std::shared_ptr<tRegexScriptingMetadataItem> tRegexScriptingMetadataItemPtr;
@@ -460,28 +452,46 @@ Q_DECLARE_METATYPE( tRegexScriptingMetadataItemPtr )
  */
 struct tRegexScriptingMetadata
 {
-    bool parse(const QRegularExpression& regex, bool bParseUMLData);
+    typedef std::pair<bool /*status*/, QString /*status description*/> tStatusPair;
+    bool parse(const QRegularExpression& regex,
+               bool bParseUMLData,
+               bool bParsePlotViewData,
+               bool bParseGroupedViewData);
     const tRegexScriptingMetadataItemPtrVec& getItemsVec() const;
     typedef std::set<int> tCheckIDs;
-    std::pair<bool /*status*/, QString /*status description*/> doesContainConsistentUMLData(bool fillInStringMsg) const;
-    std::pair<bool /*status*/, QString /*status description*/> doesContainConsistentUMLData(bool fillInStringMsg, const tCheckIDs& checkIDs) const;
+    tStatusPair doesContainConsistentUMLData(bool fillInStringMsg) const;
+    tStatusPair doesContainConsistentUMLData(bool fillInStringMsg, const tCheckIDs& checkIDs) const;
     bool doesContainAnyUMLGroup() const;
+    tStatusPair doesContainConsistentPlotViewData(bool fillInStringMsg, bool checkParameters) const;
+    tStatusPair doesContainConsistentPlotViewData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool checkParameters) const;
+    bool doesContainAnyPlotViewGroup() const;
+    const tGroupedViewIndices& getGroupedViewIndices() const;
 
 private:
-    std::pair<bool /*status*/, QString /*status description*/> doesContainConsistentUMLData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool bCheckAll) const;
+    tStatusPair doesContainConsistentUMLData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool bCheckAll) const;
+    tStatusPair doesContainConsistentPlotViewData(bool fillInStringMsg, const tCheckIDs& checkIDs, bool bCheckAll, bool checkParameters) const;
+    std::set<ePlotViewAxisType> getUniqueAvailableAxisTypes() const;
+    typedef TOptional<tStatusPair> tOptionalStatusPair;
+    typedef TOptional<bool> tOptionalBool;
 
 private:
     tRegexScriptingMetadataItemPtrVec mItemsVec;
+    tGroupedViewIndices mGroupedViewIndexes;
 };
 Q_DECLARE_METATYPE(tRegexScriptingMetadata)
 
-tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName, bool bParseUMLData );
+tRegexScriptingMetadataItemPtr parseRegexGroupName( const QString& groupName,
+                                                    bool bParseUMLData,
+                                                    bool bParsePlotViewData,
+                                                    bool bParseGroupedViewData );
+
+tGroupedViewIdx parseRegexGroupedViewIndices( const QString& groupName );
 
 ////////////////////////////////////////////////////////////
 
 struct tCalcRangesCoverageMulticolorResult
 {
-    tHighlightingRangeSet highlightingRangeSet;
+    tHighlightingRangeVec highlightingRangeVec;
 };
 
 typedef std::map<int /*group id*/, int /*gradient color id*/> tGroupIdToColorMap;
@@ -522,9 +532,11 @@ struct tStringCoverageItem
 
 typedef std::map<eSearchResultColumn, tStringCoverageItem> tStringCoverageMap;
 
+// UML data, parsed from each processed string
+
 struct tUMLDataItem
 {
-    QString UML_Custom_Value;
+    tQStringPtr pUML_Custom_Value;
     tStringCoverageMap stringCoverageMap;
 };
 
@@ -533,20 +545,42 @@ typedef std::vector<tUMLDataItem> tUMLDataItemsVec;
 typedef std::map<eUML_ID, tUMLDataItemsVec> tUMLDataMap;
 struct tUMLInfo
 {
+    tUMLDataMap UMLDataMap;
     bool bUMLConstraintsFulfilled = false;
     bool bApplyForUMLCreation = false;
-    tUMLDataMap UMLDataMap;
     bool bContains_Req_Resp_Ev = false;
+};
+
+// Plot view data, that is parsed from each processed string
+
+struct tPlotViewDataItem
+{
+    QOptionalColor optColor;
+    tQStringPtr pPlotViewGroupName;
+    tQStringPtrVec plotViewSplitParameters;
+    tStringCoverageMap stringCoverageMap;
+};
+
+typedef std::vector<tPlotViewDataItem> tPlotViewDataItemVec;
+
+typedef std::map<ePlotViewID, tPlotViewDataItemVec> tPlotViewDataMap;
+struct tPlotViewInfo
+{
+    tPlotViewDataMap plotViewDataMap;
+    bool bPlotViewConstraintsFulfilled = false;
+    bool bApplyForPlotCreation = false;
 };
 
 struct tItemMetadata
 {
     tItemMetadata();
+    tItemMetadata(const tItemMetadata& rhs);
+    tItemMetadata& operator= (const tItemMetadata& rhs);
     tItemMetadata( const tMsgId& msgId_,
-                   const tMsgId& msgIdFiltered_,
+                   const tMsgId& msgIdxInMainTable_,
                    const tFieldRanges& fieldRanges_,
                    const int& strSize_,
-                   const unsigned int& msgSize_,
+                   const std::uint32_t& msgSize_,
                    const unsigned int& timeStamp_);
     tTreeItemSharedPtr updateHighlightingInfo( const tFoundMatches& foundMatches,
                                  const QVector<QColor>& gradientColors,
@@ -562,14 +596,25 @@ struct tItemMetadata
     tUpdateUMLInfoResult updateUMLInfo(const tFoundMatches& foundMatches,
                        const tRegexScriptingMetadata& regexScriptingMetadata,
                        tTreeItemSharedPtr pTree = nullptr);
-    tMsgId msgId;
-    tMsgId msgIdFiltered;
+
+    struct tUpdatePlotViewInfoResult
+    {
+        tTreeItemSharedPtr pTreeItem;
+    };
+
+    tUpdatePlotViewInfoResult updatePlotViewInfo(const tFoundMatches& foundMatches,
+                                       const tRegexScriptingMetadata& regexScriptingMetadata,
+                                       tTreeItemSharedPtr pTree = nullptr);
+
     tHighlightingInfoMulticolor highlightingInfoMultiColor;
     tFieldRanges fieldRanges;
+    std::unique_ptr<tUMLInfo> pUMLInfo = nullptr;
+    std::unique_ptr<tPlotViewInfo> pPlotViewInfo = nullptr;
+    tMsgId msgId;
+    tMsgId msgIdxInMainTable;
     int strSize;
-    unsigned int msgSize;
     unsigned int timeStamp;
-    tUMLInfo UMLInfo;
+    std::uint32_t msgSize;
 };
 
 typedef QPair<tItemMetadata, tQStringPtr> tProcessingStringItem;
@@ -589,12 +634,15 @@ private:
     tItemMetadata mItemMetadata;
     tFoundMatches mFoundMatches;
 };
-typedef std::vector<tFoundMatchesPackItem> tFoundMatchesPackItemVec;
+
+typedef std::shared_ptr<tFoundMatchesPackItem> tFoundMatchesPackItemPtr;
+typedef std::vector<tFoundMatchesPackItemPtr> tFoundMatchesPackItemVec;
 
 struct tFoundMatchesPack
 {
     tFoundMatchesPack();
     tFoundMatchesPack( const tFoundMatchesPackItemVec& matchedItemVec_ );
+    int findRowByMsgId(const tMsgId& msgIdToFind) const;
     tFoundMatchesPackItemVec matchedItemVec;
 };
 
@@ -677,15 +725,144 @@ enum class ePathMode
 QString getPathModeAsString(const ePathMode& val);
 
 /**
- * @brief convertLogFileToDLT - converts the content of the sourceFilePath file
- * to the DLT format and saved it to the targetFilePath.
+ * @brief convertLogFileToDLTV1 - converts the content of the sourceFilePath file
+ * to the DLT format and saves it to the targetFilePath.
+ * Uses v1 dlt protocol.
  * Note! Each "\n" separation treated as a new message.
  * @param sourceFilePath - input file path. Should exist
  * @param targetFilePath - output file, which will be created and filled in with content.
  * Note! In case if file under the specified path already exists - it will be truncated!
  * @return - true in case of success. False otherwise.
  */
-bool convertLogFileToDLT( const QString& sourceFilePath,
-                          const QString& targetFilePath );
+bool convertLogFileToDLTV1( const QString& sourceFilePath,
+                           const QString& targetFilePath );
+
+/**
+ * @brief convertLogFileToDLTV2 - converts the content of the sourceFilePath file
+ * to the DLT format and saves it to the targetFilePath.
+ * Uses v2 dlt protocol.
+ * Note! Each "\n" separation treated as a new message.
+ * @param sourceFilePath - input file path. Should exist
+ * @param targetFilePath - output file, which will be created and filled in with content.
+ * Note! In case if file under the specified path already exists - it will be truncated!
+ * @return - true in case of success. False otherwise.
+ */
+bool convertLogFileToDLTV2( const QString& sourceFilePath,
+                           const QString& targetFilePath );
+
+/**
+ * @brief isDarkMode - tells whether dark mode is enabled
+ */
+bool isDarkMode();
+
+/**
+ * @brief getDataStrFromMsg - this function is used to get string data from the message in a unified way
+ * @param msgId - id of the message
+ * @param pMsg - pointer to a message wrapper
+ * @param field - search result column type. Used to detect in which way to format the data
+ * @return - shared pointer to a string with a gathered information
+ */
+tQStringPtr getDataStrFromMsg(const tMsgId& msgId, const tMsgWrapperPtr &pMsg, eSearchResultColumn field);
+
+/**
+ * @brief getChartColor - get color for chart
+ */
+QColor getChartColor();
+
+/**
+ * @enum eTabIndexes
+ * @brief This enumeration defines the indexes of different views
+ *        used as tab positions in the QTabWidget.
+ */
+enum class eTabIndexes
+{
+    /**
+     * @brief Index for the search view tab.
+     * @details Represents the position of the Search View in the QTabWidget.
+     */
+    SEARCH_VIEW = 0,
+
+    /**
+     * @brief Index for the grouped view tab.
+     * @details Represents the position of the Grouped View in the QTabWidget.
+     */
+    GROUPED_VIEW = 1,
+
+    /**
+     * @brief Index for the UML view tab.
+     * @details Represents the position of the UML View in the QTabWidget.
+     */
+    UML_VIEW = 2,
+
+    /**
+     * @brief Index for the plot view tab.
+     * @details Represents the position of the Plot View in the QTabWidget.
+     */
+    PLOT_VIEW = 3,
+
+    /**
+     * @brief Index for the coverage note view tab.
+     * @details Represents the position of the Coverage Note View in the QTabWidget.
+     */
+    COVERAGE_NOTE_VIEW = 4,
+
+    /**
+     * @brief Index for the files view tab.
+     * @details Represents the position of the Files View in the QTabWidget.
+     */
+    FILES_VIEW = 5,
+
+    /**
+     * @brief Index for the console view tab.
+     * @details Represents the position of the Console View in the QTabWidget.
+     */
+    CONSOLE_VIEW = 6
+};
+
+/**
+ * @brief Releases unused memory back to the operating system.
+ *
+ * This function ensures that unused memory managed by the allocator is returned
+ * to the operating system to free up resources. It supports different memory
+ * management systems:
+ *
+ * - If `DMA_TC_MALLOC_OPTIMIZATION_ENABLED` is defined, it uses TCMalloc's
+ *   `ReleaseFreeMemory` method to release unused memory.
+ * - If `DMA_GLIBC_MALLOC_OPTIMIZATION_ENABLED` is defined, it uses glibc's
+ *   `malloc_trim(0)` function to achieve the same effect.
+ *
+ * Use this function after memory-intensive operations to optimize memory usage.
+ */
+void releaseMemoryToOS();
+
+#ifdef DMA_TC_MALLOC_PROFILING_ENABLED
+/**
+ * @brief Dumps detailed memory allocation statistics.
+ *
+ * This function retrieves and outputs memory usage statistics when TCMalloc
+ * profiling is enabled (`DMA_TC_MALLOC_PROFILING_ENABLED`). The statistics
+ * provide insights into memory allocation patterns, freelist usage, and
+ * overall memory consumption managed by TCMalloc.
+ *
+ * The output includes a formatted summary of TCMalloc's memory state,
+ * surrounded by clearly marked start and end tags for easier parsing or
+ * debugging.
+ *
+ * **Example Output:**
+ * ```
+ * ----------------------------------------------------|
+ * ---------------TC_MALLOC_OUTPUT_START---------------|
+ * ----------------------------------------------------|
+ * MALLOC: <details>
+ * ----------------------------------------------------|
+ * ----------------TC_MALLOC_OUTPUT_END----------------|
+ * ----------------------------------------------------|
+ * ```
+ *
+ * This method is useful for debugging and profiling memory usage in
+ * applications relying on TCMalloc.
+ */
+void dumpMemoryStatistics();
+#endif
 
 #endif // DEFINITIONS_HPP
